@@ -1,0 +1,64 @@
+cff-version: 1.2.0
+message: >
+  If you use this software, please cite it using the metadata below.
+  If citing the method, please also cite the accompanying manuscript
+  (see preferred-citation).
+
+title: "deduplicate.it: Automated deduplication of literature searches"
+type: software
+version: "1.0.0"
+date-released: "2026-03-02"
+
+authors:
+  - family-names: Purkarthofer
+    given-names: David
+    orcid: "https://orcid.org/0000-0002-8927-3069"
+  - family-names: Labenbacher
+    given-names: Sebastian
+    orcid: "https://orcid.org/0000-0002-6877-1528"
+
+license: Apache-2.0
+url: "https://deduplicate.it"
+repository-code: "https://github.com/dpurkarthofer/deduplicate.it"
+doi: "10.5281/zenodo.18835298"
+
+abstract: >
+  deduplicate.it is a free, open-source tool for automated deduplication of
+  literature search exports from multiple bibliographic databases (PubMed/MEDLINE,
+  Embase, Cochrane, CINAHL, Scopus, Web of Science, and others). It uses a
+  compound key of normalised DOI and normalised title to identify and remove
+  duplicate records, producing fully auditable output files and a pre-filled
+  PRISMA-style flowchart. Available as a web application and a Python
+  command-line script.
+
+keywords:
+  - literature deduplication
+  - systematic review
+  - scoping review
+  - meta-analysis
+  - duplicate removal
+  - PRISMA
+  - evidence synthesis
+
+preferred-citation:
+  type: article
+  title: >
+    deduplicate.it: A simple open-source online tool to remove duplicates
+    from literature searches
+  authors:
+    - family-names: Purkarthofer
+      given-names: David
+      orcid: "https://orcid.org/0000-0002-8927-3069"
+    - family-names: Labenbacher
+      given-names: Sebastian
+      orcid: "https://orcid.org/0000-0002-6877-1528"
+    - family-names: Bornemann-Cimenti
+      given-names: Helmar
+      orcid: "https://orcid.org/0000-0002-1201-3752"
+    - family-names: Landoni
+      given-names: Giovanni
+      orcid: "https://orcid.org/0000-0002-8594-5980"
+  journal: "Submitted for peer review - to be updated on acceptance"
+  year: 2026
+  doi: "10.XXXX/XXXXXXX"  # fill in upon acceptance
+  status: submitted  # change to "published" upon acceptance
