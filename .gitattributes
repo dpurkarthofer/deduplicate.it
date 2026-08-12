@@ -1,0 +1,8 @@
+# Store every text file in the repository with LF line endings.
+* text=auto
+
+# index.php is served from a host that uses CRLF, so check the PHP files out
+# with CRLF. Everything else checks out with LF.
+*.php text eol=crlf
+*.py  text eol=lf
+*.md  text eol=lf
