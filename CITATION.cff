@@ -6,8 +6,8 @@ message: >
 
 title: "deduplicate.it: Automated deduplication of literature searches"
 type: software
-version: "1.0.0"
-date-released: "2026-03-02"
+version: "1.1.0"
+date-released: "2026-08-07"
 
 authors:
   - family-names: Purkarthofer
@@ -20,7 +20,7 @@ authors:
 license: Apache-2.0
 url: "https://deduplicate.it"
 repository-code: "https://github.com/dpurkarthofer/deduplicate.it"
-doi: "10.5281/zenodo.18835298"
+doi: "10.5281/zenodo.18835297"  # concept DOI — always resolves to the newest version
 
 abstract: >
   deduplicate.it is a free, open-source tool for automated deduplication of
@@ -58,7 +58,5 @@ preferred-citation:
     - family-names: Landoni
       given-names: Giovanni
       orcid: "https://orcid.org/0000-0002-8594-5980"
-  journal: "Submitted for peer review - to be updated on acceptance"
   year: 2026
-  doi: "10.XXXX/XXXXXXX"  # fill in upon acceptance
-  status: submitted  # change to "published" upon acceptance
+  status: submitted  # on acceptance: set to "published" and add journal, volume and doi

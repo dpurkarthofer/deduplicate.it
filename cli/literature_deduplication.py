@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-Literature Search Deduplication — v6
---------------------------------------
+deduplicate.it — Literature Search Deduplication (command-line edition)
+-----------------------------------------------------------------------
+Release 1.1.0  ·  algorithm generation v6
+See CHANGELOG.md for the release history.
+
 Deduplicates literature search exports using a compound key of
 (normalised DOI, normalised title).  Supports all major database
 export formats and produces output in one or more formats.
 
-What's new vs the old single-file version
-------------------------------------------
+Algorithm (generation v6)
+-------------------------
 * Compound key:  DOI + normalised title (not DOI alone)
 * Title normalisation pipeline v6 (Greek expansion, trademark fix,
   line-break hyphen fix, transliteration, diacritic stripping …)
 * Format auto-detection (RIS, MEDLINE, WoS, BibTeX, CSV)
+* DOI recovery from link fields when no DOI field is present (1.1.0)
 * DOI collision reporting  (doi_collisions.csv with in_deduplicated_output)
 * Multi-format output:  RIS, CSV, MEDLINE tagged text, XML
 * Flowchart HTML generated from draw.io template
@@ -37,6 +41,8 @@ from collections import defaultdict, Counter
 # Place all input files in the 'source/' folder next to this script.
 # All supported formats (.ris, .txt, .nbib, .bib, .csv, .tsv, .ciw, .enw)
 # are auto-detected. Files are processed in alphabetical order.
+
+__version__ = '1.1.0'
 
 SOURCE_DIR = Path(__file__).parent / 'source'
 
@@ -71,20 +77,52 @@ def normalize_doi(raw: str) -> str:
     return s if _DOI_VALID.match(s) else ''
 
 
+# A DOI embedded anywhere inside a longer string (typically a URL).  Stops at
+# whitespace and at characters that cannot occur in a DOI suffix in practice.
+_DOI_IN_TEXT = re.compile(r'(10\.\d{4,}/[^\s"\'<>&]+)')
+
+
+def extract_doi_from_text(*values) -> str:
+    """Recover a DOI that a database has stored inside a link or free-text field.
+
+    Some sources provide no DOI field at all and expose the DOI only as a URL —
+    ERIC, for example, records it as ``http://dx.doi.org/10.1000/182``
+    in its AID field, and elsewhere as a percent-encoded ``?redir=`` target.
+    Values are percent-decoded first so that both forms are found.
+
+    Returns the bare DOI (not normalised) if one is present and structurally
+    valid, otherwise an empty string.  Non-DOI links (an ERIC record page, a
+    PDF, a publisher landing page) yield nothing, so this is safe to call on
+    any URL field.
+    """
+    for v in values:
+        if not v:
+            continue
+        s = unquote(str(v).strip())
+        for match in _DOI_IN_TEXT.finditer(s):
+            candidate = match.group(1).rstrip('.,;:)]}\'"')
+            if normalize_doi(candidate):
+                return candidate
+    return ''
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # TITLE NORMALISATION  (v6)
 # ═══════════════════════════════════════════════════════════════════════════════
 # Steps:
 #   0.  html.unescape
 #   0b. Strip trademark indicators (™ ® ℠, parenthesised (TM), literal TM suffix)
-#   0c. Rejoin line-break hyphens: "insuf- ficiency" → "insufficiency"
+#   0c. Rejoin words split by a hyphen at a line break: "insuf-\nficiency"
+#       → "insufficiency".  Only a real line break counts; a hyphen followed by
+#       an ordinary space is left for step 5 to turn into a word boundary.
 #   1.  Unicode NFC composition
 #   2.  Transliterate special Latin characters and subscript digits
 #   3a. NFD decomposition
 #   3b. Strip combining diacritical marks
 #   3c. Expand Greek letters: α → alpha, β → beta … (v6)
 #   4.  Lowercase
-#   5.  Remove all non-alphanumeric, non-space characters
+#   5.  Replace every character outside [a-z0-9] with a space, so that
+#       a hyphenated compound and its spaced form reduce to the same string
 #   6.  Collapse whitespace
 
 _TITLE_TRANSLIT = str.maketrans({
@@ -130,14 +168,14 @@ def normalize_title(raw: str) -> str:
     s = re.sub(r'[™®©℠℗]', '', s)
     s = re.sub(r'\s*\(TM\)\s*', ' ', s, flags=re.IGNORECASE)
     s = re.sub(r'(?<=[a-z])TM(?=\W|$)', '', s)
-    s = re.sub(r'(?<!\s)-\s+', '', s)
+    s = re.sub(r'([A-Za-z])-\s*[\r\n]+\s*([A-Za-z])', r'\1\2', s)
     s = unicodedata.normalize('NFC', s)
     s = s.translate(_TITLE_TRANSLIT)
     s = unicodedata.normalize('NFD', s)
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
     s = s.translate(_GREEK_EXPAND)
     s = s.lower()
-    s = re.sub(r'[^a-z0-9\s]', '', s)
+    s = re.sub(r'[^a-z0-9\s]', ' ', s)
     s = re.sub(r'\s+', ' ', s).strip()
     return s
 
@@ -160,6 +198,12 @@ def detect_format(path: str) -> str:
     if re.search(r'^TY\s{1,2}-\s', sample, re.MULTILINE):
         return 'ris'
     if re.search(r'^PMID-\s', sample, re.MULTILINE):
+        return 'medline'
+    # ERIC exports MEDLINE-style .nbib but carries no PMID.  Its own marker is
+    # an OWN tag naming the source database, with OID holding the ERIC number.
+    if re.search(r'^OWN\s*-\s*ERIC\s*$', sample, re.MULTILINE):
+        return 'medline'
+    if re.search(r'^OID\s*-\s*E[DJ]\d{4,}\s*$', sample, re.MULTILINE):
         return 'medline'
     n_numbered = len(re.findall(r'^\d+:\s+[A-Z]', sample, re.MULTILINE))
     has_inline_doi = bool(re.search(r'\bdoi:\s*10\.', sample, re.IGNORECASE))
@@ -200,6 +244,9 @@ def _make_rec(raw_doi, has_abstract, ris_fields, path, fmt=''):
 # PARSER — MEDLINE / PubMed NBIB  (.txt, .nbib)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_ML_TAG = re.compile(r'^([A-Z][A-Z0-9]{0,3})\s*-\s(.*)$')
+
+
 def parse_medline(path: str) -> list:
     records, raw, last_tag = [], {}, None
     with open(path, encoding='utf-8', errors='replace') as fh:
@@ -210,9 +257,14 @@ def parse_medline(path: str) -> list:
                     records.append(_medline_to_rec(raw, path))
                     raw, last_tag = {}, None
                 continue
-            if len(line) >= 6 and line[4:6] == '- ':
-                last_tag = line[:4].strip()
-                raw.setdefault(last_tag, []).append(line[6:])
+            # Standard MEDLINE pads tags to four characters, putting the dash at
+            # column 4 ("TI  - ", "PMID- ").  ERIC instead writes "ISSN - ", with
+            # the dash at column 5, so match the tag rather than a fixed offset.
+            # Continuation lines are indented and cannot match.
+            tag_match = _ML_TAG.match(line)
+            if tag_match:
+                last_tag = tag_match.group(1)
+                raw.setdefault(last_tag, []).append(tag_match.group(2))
             elif line.startswith('      ') and last_tag:
                 raw[last_tag][-1] += ' ' + line.strip()
     if raw:
@@ -221,6 +273,7 @@ def parse_medline(path: str) -> list:
 
 
 def _medline_to_rec(raw: dict, path: str) -> dict:
+    # 1. Standard MEDLINE marks the DOI explicitly, e.g. "LID - 10.1/x [doi]".
     raw_doi = ''
     for tag in ('LID', 'AID'):
         for v in raw.get(tag, []):
@@ -229,11 +282,30 @@ def _medline_to_rec(raw: dict, path: str) -> dict:
                 break
         if raw_doi:
             break
+    # 2. ERIC writes an unmarked DOI URL into AID and an unrelated record URL
+    #    into LID, so fall back to scanning the link-bearing tags.  AID is tried
+    #    before LID because LID is the less reliable of the two.
+    if not raw_doi:
+        raw_doi = extract_doi_from_text(*raw.get('AID', []), *raw.get('LID', []),
+                                        *raw.get('UR', []), *raw.get('SO', []))
     ris = {'TY': [_ml_pt_to_ris(raw.get('PT', ['Journal Article'])[0])]}
     for ml, rs in [('TI', 'TI'), ('AB', 'AB'), ('JT', 'JO'), ('TA', 'J2'),
                    ('VI', 'VL'), ('IP', 'IS'), ('DP', 'PY'), ('PMID', 'AN'), ('SN', 'SN')]:
         if ml in raw:
             ris[rs] = raw[ml]
+    # ERIC-specific tags: OT carries keywords, OID the ERIC accession number,
+    # and ISSN is spelled out rather than abbreviated to SN.
+    if 'OT' in raw:
+        ris.setdefault('KW', []).extend(raw['OT'])
+    if 'OID' in raw and 'AN' not in ris:
+        ris['AN'] = raw['OID']
+    if 'ISSN' in raw and 'SN' not in ris:
+        ris['SN'] = [re.sub(r'^E?ISSN-\s*', '', v).strip() for v in raw['ISSN']]
+    # ERIC's DP can mix an article number into the date; keep the year.
+    if 'PY' in ris and ris['PY']:
+        year = re.search(r'\b(1[6-9]\d{2}|20\d{2})\b', ris['PY'][0])
+        if year:
+            ris['PY'] = [year.group(1)]
     if 'PG' in raw:
         parts = re.split(r'\s*-\s*', raw['PG'][0], maxsplit=1)
         ris['SP'] = [parts[0].strip()]
@@ -284,10 +356,8 @@ def parse_ris(path: str) -> list:
 def _ris_to_rec(fields: dict, path: str) -> dict:
     raw_doi = next((v.strip() for v in fields.get('DO', []) if v.strip()), '')
     if not raw_doi:
-        for v in fields.get('L3', []) + fields.get('UR', []):
-            if 'doi.org/' in v.lower() or re.match(r'^\s*10\.\d{4,}/', v):
-                raw_doi = v.strip()
-                break
+        raw_doi = extract_doi_from_text(*fields.get('L3', []), *fields.get('UR', []),
+                                        *fields.get('LK', []), *fields.get('M3', []))
     if 'TY' not in fields:
         fields['TY'] = ['JOUR']
     abstract = ' '.join(fields.get('AB', fields.get('N2', [])))
@@ -325,6 +395,9 @@ def parse_wos(path: str) -> list:
 
 def _wos_to_rec(raw: dict, path: str) -> dict:
     raw_doi = raw.get('DI', [''])[0].strip()
+    if not raw_doi:
+        raw_doi = extract_doi_from_text(*raw.get('D2', []), *raw.get('OI', []),
+                                        *raw.get('UR', []))
     ris = {'TY': ['JOUR']}
     for wt, rt in [('TI', 'TI'), ('AB', 'AB'), ('SO', 'JO'), ('VL', 'VL'),
                    ('IS', 'IS'), ('BP', 'SP'), ('EP', 'EP'), ('SN', 'SN'),
@@ -374,6 +447,9 @@ _BIB_TY_MAP = {
 
 def _bibtex_to_rec(fields: dict, entry_type: str, path: str) -> dict:
     raw_doi = fields.get('doi', '').strip()
+    if not raw_doi:
+        raw_doi = extract_doi_from_text(fields.get('url', ''), fields.get('howpublished', ''),
+                                        fields.get('note', ''))
     ris = {'TY': [_BIB_TY_MAP.get(entry_type, 'GEN')]}
     for bf, rt in [('title', 'TI'), ('abstract', 'AB'), ('journal', 'JO'),
                    ('booktitle', 'JO'), ('volume', 'VL'), ('number', 'IS'),
@@ -410,9 +486,16 @@ def parse_csv_file(path: str) -> list:
         col = {(k or '').strip().lower(): (v or '').strip() for k, v in row.items() if k}
         raw_doi  = next((col[c] for c in ('doi', 'doi link', 'digital object identifier') if col.get(c)), '')
         title    = next((col[c] for c in ('title', 'article title', 'document title') if col.get(c)), '')
-        abstract = next((col[c] for c in ('abstract', 'author abstract') if col.get(c)), '')
+        abstract = next((col[c] for c in ('abstract', 'author abstract', 'description') if col.get(c)), '')
         au_raw   = next((col[c] for c in ('authors', 'author', 'author full names') if col.get(c)), '')
-        year     = next((col[c][:4] for c in ('year', 'publication year', 'pub year') if col.get(c)), '')
+        year     = next((col[c][:4] for c in ('year', 'publication year', 'pub year',
+                                              'publicationdateyear') if col.get(c)), '')
+        # Sources that publish no DOI column may still carry the DOI inside a
+        # link column — ERIC's CSV is the common case.
+        if not raw_doi:
+            raw_doi = extract_doi_from_text(*(col.get(c, '') for c in
+                                              ('url', 'link', 'links', 'doi url', 'fulltext url',
+                                               'article url', 'permalink', 'source url')))
         authors  = [a.strip() for a in re.split(r';', au_raw) if a.strip()]
         ris = {'TY': ['JOUR']}
         if title:    ris['TI'] = [title]

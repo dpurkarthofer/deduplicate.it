@@ -3,6 +3,9 @@
 // Literature Search Deduplication: Web Interface
 // PHP port of literature_deduplication_v6 (Python / Jupyter notebook)
 //
+// deduplicate.it release 1.1.0  ·  algorithm generation v6
+// See CHANGELOG.md for the release history.
+//
 // Supported formats (auto-detected from file content):
 //   MEDLINE .txt/.nbib · RIS .ris · Web of Science tagged .ciw/.txt
 //   BibTeX .bib · CSV/TSV .csv/.tsv
@@ -86,6 +89,90 @@ if (isset($_GET['download']) && !empty($_SESSION['dedup_token'])) {
 }
 
 
+const DEDUP_VERSION = '1.1.0';
+
+// ── Hidden diagnostics ───────────────────────────────────────────────────────
+// Off unless the request carries ?diag=<token>. Nothing is shown to users and no
+// record content is written anywhere. Progress is sent to the PHP error log as it
+// happens, so a run that times out or dies still leaves a trail up to the point of
+// failure. Change or blank DIAG_TOKEN to rotate or disable.
+const DIAG_TOKEN = '';   // set on the server only; never commit a live token
+
+$DIAG    = isset($_GET['diag']) && DIAG_TOKEN !== ''
+           && hash_equals(DIAG_TOKEN, (string) $_GET['diag']);
+$DIAG_T0 = $_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true);
+
+// ?diag=<token>&probe=1 reports the effective limits and exits. No upload needed,
+// no user-visible change, and it never touches session or record data.
+// ?diag=<token>&showlog=1 prints the diagnostic file; &clearlog=1 empties it first.
+if ($DIAG && (isset($_GET['showlog']) || isset($_GET['clearlog']))) {
+    header('Content-Type: text/plain; charset=utf-8');
+    $f = diag_log_path();
+    if (isset($_GET['clearlog'])) {
+        @unlink($f);
+        echo "diagnostic log cleared.\n";
+        if (!isset($_GET['showlog'])) exit;
+    }
+    echo file_exists($f) ? file_get_contents($f) : "(no diagnostic log yet)\n";
+    exit;
+}
+
+if ($DIAG && isset($_GET['probe'])) {
+    header('Content-Type: text/plain; charset=utf-8');
+    foreach ([
+        'deduplicate.it version' => DEDUP_VERSION,
+        'PHP version'            => PHP_VERSION,
+        'SAPI'                   => PHP_SAPI,
+        'post_max_size'          => ini_get('post_max_size'),
+        'upload_max_filesize'    => ini_get('upload_max_filesize'),
+        'max_file_uploads'       => ini_get('max_file_uploads'),
+        'memory_limit'           => ini_get('memory_limit'),
+        'max_execution_time'     => ini_get('max_execution_time'),
+        'max_input_time'         => ini_get('max_input_time'),
+        'session.save_path set'  => (ini_get('session.save_path') !== '' ? 'yes' : 'no'),
+        'error_log'              => (ini_get('error_log') ?: '(server default)'),
+        'log_errors'             => (ini_get('log_errors') ? 'On' : 'OFF (using diag file)'),
+        'diag file'              => diag_log_path(),
+        'diag file writable'     => (is_writable(dirname(diag_log_path()))
+                                     ? 'yes' : 'NO - directory not writable'),
+        'diag file exists'       => (file_exists(diag_log_path())
+                                     ? 'yes (' . filesize(diag_log_path()) . ' bytes)' : 'not yet'),
+        'mbstring loaded'        => extension_loaded('mbstring') ? 'yes' : 'NO',
+        'intl/Normalizer'        => class_exists('Normalizer') ? 'yes' : 'NO (accents degrade)',
+        'pcre.backtrack_limit'   => ini_get('pcre.backtrack_limit'),
+        'pcre JIT'               => ini_get('pcre.jit'),
+    ] as $k => $v) {
+        printf("%-24s %s\n", $k, $v);
+    }
+    exit;
+}
+
+// Diagnostics are written straight to a file next to index.php rather than via
+// the server error log, because many shared hosts run with log_errors=Off and
+// error_log() would then discard the message silently. The file name embeds the
+// token so it cannot be guessed, and it is only ever created while diagnostics
+// are switched on. Delete it when finished.
+function diag_log_path(): string {
+    // Kept outside the document root so the log can never be fetched as a static
+    // file, and the token is reduced to safe characters so a badly chosen one
+    // cannot escape the directory.
+    $safe = preg_replace('/[^A-Za-z0-9_-]/', '', DIAG_TOKEN);
+    return rtrim(sys_get_temp_dir(), '/') . '/ddi-diag-' . $safe . '.log';
+}
+
+function dbg(string $msg): void {
+    global $DIAG, $DIAG_T0;
+    if (!$DIAG) return;
+    // Strip newlines so an uploaded file name cannot forge extra log lines.
+    $msg  = str_replace(["\r", "\n"], ' ', $msg);
+    $line = sprintf("[%s] [ddi %s] %6.2fs %5.1fMB  %s\n",
+        date('Y-m-d H:i:s'), DEDUP_VERSION, microtime(true) - $DIAG_T0,
+        memory_get_peak_usage(true) / 1048576, $msg);
+    @error_log($line, 3, diag_log_path());   // type 3 = append to file, ignores log_errors
+    @error_log(rtrim($line));                // and to the server log, if it is enabled
+}
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DOI NORMALISATION  (per DOI Handbook §3.4–3.8 / ISO 26324)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -118,6 +205,33 @@ function normalize_doi(string $raw): string {
     return preg_match('/^10\.\d{4,}\//', $s) ? $s : '';                   // 7
 }
 
+/**
+ * Recover a DOI that a database has stored inside a link or free-text field.
+ *
+ * Some sources publish no DOI field at all and expose the DOI only as a URL.
+ * ERIC, for example, records it as "http://dx.doi.org/10.1000/182"
+ * in its AID field, and elsewhere as a percent-encoded "?redir=" target; values
+ * are therefore percent-decoded before scanning. Other databases embed the DOI
+ * mid-path ("example.org/doi/pdf/10.1000/182"), which a prefix test misses.
+ *
+ * Returns the bare DOI (not normalised) if one is present and structurally
+ * valid, otherwise ''. Non-DOI links — an ERIC record page, a PDF, a publisher
+ * landing page — yield nothing, so this is safe to call on any URL field.
+ */
+function extract_doi_from_text(...$values): string {
+    foreach ($values as $v) {
+        if ($v === null || $v === '') continue;
+        $s = rawurldecode(trim((string) $v));
+        if (preg_match_all('/(10\.\d{4,}\/[^\s"\'<>&]+)/', $s, $mm)) {
+            foreach ($mm[1] as $candidate) {
+                $candidate = rtrim($candidate, ".,;:)]}'\"");
+                if (normalize_doi($candidate) !== '') return $candidate;
+            }
+        }
+    }
+    return '';
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TITLE NORMALISATION  (v6 pipeline)
@@ -145,8 +259,12 @@ function normalize_title(string $raw): string {
     // Step 0: HTML entity decode
     $s = html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-    // Step 0b: strip trademark / copyright symbols
+    // Step 0b: strip trademark / copyright symbols and the written-out forms
+    // "(TM)" and a trailing "TM" (e.g. "AspirnautTM"), which databases use
+    // when they cannot encode the symbol itself.
     $s = str_replace(['™', '®', '©', '℠', '℗'], '', $s);
+    $s = preg_replace('/\s*\(TM\)\s*/i', ' ', $s);
+    $s = preg_replace('/(?<=[a-z])TM(?=\W|$)/', '', $s);
 
     // Step 0c: rejoin line-break hyphenated words
     $s = preg_replace('/([A-Za-z])-\s*[\r\n]+\s*([A-Za-z])/', '$1$2', $s);
@@ -184,6 +302,11 @@ function normalize_title(string $raw): string {
             'Ů'=>'U','ů'=>'u',
             'Ŷ'=>'Y','ŷ'=>'y',
             'Ź'=>'Z','ź'=>'z','Ż'=>'Z','ż'=>'z',
+            // Characters that Unicode decomposition cannot strip to an ASCII
+            // base: dotless i, stroked d, and subscript digits.
+            'ı'=>'i','đ'=>'d','Đ'=>'D',
+            '₀'=>'0','₁'=>'1','₂'=>'2','₃'=>'3','₄'=>'4',
+            '₅'=>'5','₆'=>'6','₇'=>'7','₈'=>'8','₉'=>'9',
         ];
     }
     $s = str_replace(array_keys($translit), array_values($translit), $s);
@@ -221,8 +344,11 @@ function normalize_title(string $raw): string {
     // Step 5: keep only a-z, 0-9, whitespace
     $s = preg_replace('/[^a-z0-9\s]/u', ' ', $s);
 
-    // Step 6: collapse whitespace
-    return trim(preg_replace('/\s+/', ' ', $s));
+    // Step 6: collapse whitespace. The /u modifier is required so that
+    // non-ASCII spaces (notably the non-breaking space U+00A0, common in
+    // Embase and CINAHL titles) collapse to an ordinary space; without it
+    // they survive normalisation and prevent an otherwise exact match.
+    return trim(preg_replace('/\s+/u', ' ', $s));
 }
 
 
@@ -245,6 +371,10 @@ function detect_format(string $content): string {
 
     if (preg_match('/^TY\s{1,2}-\s/m', $sample))                return 'ris';
     if (preg_match('/^PMID-\s/m', $sample))                      return 'medline';
+    // ERIC exports MEDLINE-style .nbib but carries no PMID. Its markers are an
+    // OWN tag naming the source database and an OID holding the ERIC number.
+    if (preg_match('/^OWN\s*-\s*ERIC\s*$/m', $sample))           return 'medline';
+    if (preg_match('/^OID\s*-\s*E[DJ]\d{4,}\s*$/m', $sample))    return 'medline';
 
     $n_num = preg_match_all('/^\d+:\s+[A-Z]/m', $sample);
     $has_doi = (bool) preg_match('/\bdoi:\s*10\./i', $sample);
@@ -299,9 +429,13 @@ function parse_medline(string $content, string $filename): array {
             if ($raw) { $records[] = _medline_to_rec($raw, $filename); $raw = []; $last = null; }
             continue;
         }
-        if (strlen($line) >= 6 && substr($line, 4, 2) === '- ') {
-            $last = trim(substr($line, 0, 4));
-            $raw[$last][] = substr($line, 6);
+        // Standard MEDLINE pads tags to four characters, putting the dash at
+        // column 4 ("TI  - ", "PMID- "). ERIC instead writes "ISSN - ", with the
+        // dash at column 5, so match the tag rather than a fixed offset.
+        // Continuation lines are indented and cannot match.
+        if (preg_match('/^([A-Z][A-Z0-9]{0,3})\s*-\s(.*)$/', $line, $tm)) {
+            $last = $tm[1];
+            $raw[$last][] = $tm[2];
         } elseif (substr($line, 0, 6) === '      ' && $last !== null) {
             $raw[$last][count($raw[$last]) - 1] .= ' ' . trim($line);
         }
@@ -320,12 +454,31 @@ function _medline_to_rec(array $raw, string $filename): array {
             }
         }
     }
+    // ERIC writes an unmarked DOI URL into AID and an unrelated record URL into
+    // LID, so fall back to scanning the link-bearing tags. AID is tried before
+    // LID because LID is the less reliable of the two.
+    if ($raw_doi === '') {
+        $raw_doi = extract_doi_from_text(
+            ...array_merge($raw['AID'] ?? [], $raw['LID'] ?? [],
+                           $raw['UR'] ?? [], $raw['SO'] ?? []));
+    }
     $pt  = $raw['PT'][0] ?? 'Journal Article';
     $ris = ['TY' => [_ml_pt_to_ris($pt)]];
 
     foreach (['TI'=>'TI','AB'=>'AB','JT'=>'JO','TA'=>'J2',
               'VI'=>'VL','IP'=>'IS','DP'=>'PY','PMID'=>'AN','SN'=>'SN'] as $ml => $rs) {
         if (isset($raw[$ml])) $ris[$rs] = $raw[$ml];
+    }
+    // ERIC-specific tags: OT carries keywords, OID the ERIC accession number,
+    // and ISSN is spelled out rather than abbreviated to SN.
+    if (isset($raw['OT']))  $ris['KW'] = array_merge($ris['KW'] ?? [], $raw['OT']);
+    if (isset($raw['OID']) && !isset($ris['AN'])) $ris['AN'] = $raw['OID'];
+    if (isset($raw['ISSN']) && !isset($ris['SN'])) {
+        $ris['SN'] = array_map(fn($v) => trim(preg_replace('/^E?ISSN-\s*/', '', $v)), $raw['ISSN']);
+    }
+    // ERIC's DP can mix an article number into the date; keep the year.
+    if (!empty($ris['PY'][0]) && preg_match('/\b(1[6-9]\d{2}|20\d{2})\b/', $ris['PY'][0], $ym)) {
+        $ris['PY'] = [$ym[1]];
     }
     if (isset($raw['PG'])) {
         $pg = preg_split('/\s*-\s*/', $raw['PG'][0], 2);
@@ -381,13 +534,11 @@ function _ris_to_rec(array $fields, string $filename): array {
     foreach ($fields['DO'] ?? [] as $v) {
         if (trim($v) !== '') { $raw_doi = trim($v); break; }
     }
-    // Fallback: L3 or UR if it looks like a doi.org URL or bare DOI
+    // Fallback: scan the link-bearing tags for an embedded DOI.
     if ($raw_doi === '') {
-        foreach (array_merge($fields['L3'] ?? [], $fields['UR'] ?? []) as $v) {
-            if (stripos($v, 'doi.org/') !== false || preg_match('/^\s*10\.\d{4,}\//', $v)) {
-                $raw_doi = trim($v); break;
-            }
-        }
+        $raw_doi = extract_doi_from_text(
+            ...array_merge($fields['L3'] ?? [], $fields['UR'] ?? [],
+                           $fields['LK'] ?? [], $fields['M3'] ?? []));
     }
     if (!isset($fields['TY'])) $fields['TY'] = ['JOUR'];
     $ab = implode(' ', array_merge($fields['AB'] ?? [], $fields['N2'] ?? []));
@@ -427,6 +578,10 @@ function parse_wos(string $content, string $filename): array {
 
 function _wos_to_rec(array $raw, string $filename): array {
     $raw_doi = trim($raw['DI'][0] ?? '');
+    if ($raw_doi === '') {
+        $raw_doi = extract_doi_from_text(
+            ...array_merge($raw['D2'] ?? [], $raw['OI'] ?? [], $raw['UR'] ?? []));
+    }
     $ris     = ['TY' => ['JOUR']];
     foreach (['TI'=>'TI','AB'=>'AB','SO'=>'JO','VL'=>'VL','IS'=>'IS',
               'BP'=>'SP','EP'=>'EP','SN'=>'SN','PY'=>'PY','UT'=>'AN','PU'=>'PB'] as $wt => $rt) {
@@ -472,6 +627,11 @@ function parse_bibtex(string $content, string $filename): array {
         if (!$fields) continue;
 
         $raw_doi = trim($fields['doi'] ?? '');
+        if ($raw_doi === '') {
+            $raw_doi = extract_doi_from_text($fields['url'] ?? '',
+                                             $fields['howpublished'] ?? '',
+                                             $fields['note'] ?? '');
+        }
         $ris_ty  = $ty_map[$etype] ?? 'GEN';
         $ris     = ['TY' => [$ris_ty]];
 
@@ -529,10 +689,20 @@ function parse_csv_file(string $content, string $filename): array {
 
         $raw_doi  = $first_nonempty(['doi','doi link','digital object identifier']);
         $title    = $first_nonempty(['title','article title','document title']);
-        $abstract = $first_nonempty(['abstract','author abstract']);
+        $abstract = $first_nonempty(['abstract','author abstract','description']);
         $au_raw   = $first_nonempty(['authors','author','author full names']);
-        $year_raw = $first_nonempty(['year','publication year','pub year']);
+        $year_raw = $first_nonempty(['year','publication year','pub year','publicationdateyear']);
         $year     = $year_raw !== '' ? substr($year_raw, 0, 4) : '';
+
+        // Sources that publish no DOI column may still carry the DOI inside a
+        // link column — ERIC's CSV is the common case.
+        if ($raw_doi === '') {
+            $raw_doi = extract_doi_from_text(
+                $col['url'] ?? '', $col['link'] ?? '', $col['links'] ?? '',
+                $col['doi url'] ?? '', $col['fulltext url'] ?? '',
+                $col['article url'] ?? '', $col['permalink'] ?? '',
+                $col['source url'] ?? '');
+        }
 
         $authors = array_values(array_filter(array_map('trim', preg_split('/\s*;\s*/', $au_raw))));
 
@@ -1018,7 +1188,7 @@ function run_deduplication(array $uploaded_files): array {
             for ($a = 0, $na = count($srcs); $a < $na; $a++) {
                 for ($b = $a + 1; $b < $na; $b++) {
                     $key = $srcs[$a] . ' ↔ ' . $srcs[$b];
-                    $cross[$key] = ($cross[$key] ?? 0) + 1;
+                    $cross[$key] = ($cross[$key] ?? 0) + count($uids);
                 }
             }
         }
@@ -1057,6 +1227,16 @@ $results = null;
 $error   = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    dbg('POST received. php=' . PHP_VERSION
+        . ' post_max=' . ini_get('post_max_size')
+        . ' upload_max=' . ini_get('upload_max_filesize')
+        . ' max_uploads=' . ini_get('max_file_uploads')
+        . ' mem=' . ini_get('memory_limit')
+        . ' max_exec=' . ini_get('max_execution_time')
+        . ' content_length=' . ($_SERVER['CONTENT_LENGTH'] ?? '?')
+        . ' files_in_request=' . (isset($_FILES['files']['name']) ? count($_FILES['files']['name']) : 0)
+        . ' session_bytes_already_stored=' . strlen(serialize($_SESSION ?? [])));
+    dbg('note: elapsed above includes session_start() and the full upload');
     $uploaded = [];
     if (!empty($_FILES['files']['name'][0])) {
         $names  = $_FILES['files']['name'];
@@ -1078,6 +1258,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
             $uploaded[] = ['name' => $names[$i], 'content' => $content];
+            dbg(sprintf('read file %d/%d %s (%.2f MB)', $i + 1, $n,
+                        $names[$i], strlen($content) / 1048576));
         }
     }
 
@@ -1086,7 +1268,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Please select at least one file.';
         } else {
             try {
+                dbg('starting deduplication of ' . count($uploaded) . ' file(s)');
                 $results = run_deduplication($uploaded);
+                dbg(sprintf('deduplication done: %d in, %d kept, %d removed',
+                    $results['n_total'], $results['n_kept'], $results['n_excluded']));
                 $tok = bin2hex(random_bytes(16));
                 $_SESSION['dedup_token']     = $tok;
                 $_SESSION['dedup_ris']       = $results['ris_output'];
@@ -1106,12 +1291,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     unset($_SESSION['dedup_flowchart_complex']);
                 }
                 $results['tok'] = $tok;
+                dbg(sprintf('session payload written: %.2f MB',
+                    (strlen($results['ris_output']) + strlen($results['dedup_csv'])
+                     + strlen($results['dedup_medline']) + strlen($results['dedup_xml'])
+                     + strlen($results['csv_output']) + strlen($results['collisions_csv'])
+                     + strlen($results['simple_flowchart'])
+                     + strlen($results['complex_flowchart'])) / 1048576));
             } catch (Throwable $e) {
+                dbg('EXCEPTION ' . get_class($e) . ': ' . $e->getMessage()
+                    . ' @ ' . $e->getFile() . ':' . $e->getLine());
                 $error = 'Processing error: ' . htmlspecialchars($e->getMessage());
             }
         }
     }
 }
+dbg('processing complete, rendering page'
+    . ($error !== null ? ' (with error: ' . $error . ')' : ''));
+
 
 // ───────────────────────────────────────────────────────────────────────────
 // Helpers for HTML output
@@ -1514,6 +1710,7 @@ a{color:#5b8de0}
   including review of the <a href="https://github.com/dpurkarthofer/deduplicate.it" target="_blank">open-access source code</a>
   and inspection of the Exclusion file, before proceeding to any further step in their research or publication.<br>
   <a href="legal.php" style="color:#d0d0c8">Legal &amp; privacy notice</a>
+  &middot; <span title="Release version">v<?= DEDUP_VERSION ?></span>
 </footer>
 </div>
 
@@ -1585,4 +1782,3 @@ function toggleFmt() {
 </script>
 </body>
 </html>
-
