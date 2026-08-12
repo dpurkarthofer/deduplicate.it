@@ -17,6 +17,8 @@ Two version numbers appear in the source and should not be confused:
 
 ## [1.1.0] — 2026-08-07
 
+Archived on Zenodo (doi:10.5281/zenodo.21906819).
+
 Adds native support for ERIC exports, recovers DOIs that databases publish only inside link
 fields, and reconciles the command-line and web editions, which until now normalised titles
 differently. The ERIC and DOI-recovery work changes no deduplication decision for any
