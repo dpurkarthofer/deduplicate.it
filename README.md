@@ -79,17 +79,20 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 
 ## Citation
 
-**Citing the software** (this repository / Zenodo archive):
-
-> Purkarthofer D, Labenbacher S. *deduplicate.it: Automated deduplication of literature searches* [Software]. Zenodo. https://doi.org/10.5281/zenodo.18835297
-
-That DOI covers all versions and always resolves to the most recent one. To cite the exact
-version you used, take its version-specific DOI from the Zenodo record.
-
-A `CITATION.cff` file is included for automatic citation support.
-
-**Citing the method** (accompanying manuscript):
+**Please cite the methods paper.** This is the citation to use when deduplicate.it
+contributed to a review:
 
 > Purkarthofer, D., Labenbacher, S., Bornemann-Cimenti, H., & Landoni, G. (2026).
 > *deduplicate.it: A simple open-source tool to remove duplicates from literature searches.*
 > Campbell Systematic Reviews, 22(3). https://doi.org/10.1177/18911803261484937
+
+A `CITATION.cff` file is included, so GitHub's "Cite this repository" button returns the
+reference above.
+
+**Citing the software itself** is only needed when you have to point at a specific version
+of the code — for a reproducibility statement, say:
+
+> Purkarthofer D, Labenbacher S. *deduplicate.it: Automated deduplication of literature searches* [Software]. Zenodo. https://doi.org/10.5281/zenodo.18835297
+
+That DOI covers all versions and always resolves to the most recent one. To pin the exact
+version you used, take its version-specific DOI from the Zenodo record.

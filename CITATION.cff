@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: >
-  If you use this software, please cite it using the metadata below.
-  If citing the method, please also cite the accompanying manuscript
-  (see preferred-citation).
+  If you use this tool, please cite the accompanying methods paper given
+  under preferred-citation. Cite the software itself only when you need to
+  refer to a specific version of the code, using the DOI below.
 
 title: "deduplicate.it: Automated deduplication of literature searches"
 type: software
