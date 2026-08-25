@@ -7,11 +7,45 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Two version numbers appear in the source and should not be confused:
 
-- the **release version** (`1.1.0`), which this file tracks;
+- the **release version** (`1.1.1`), which this file tracks;
 - the **algorithm generation** (`v6`), which names the deduplication logic — the compound
   key of (normalised DOI, normalised title) and the title-normalisation pipeline. The
   algorithm generation changes only when deduplication decisions change, and it has not
   changed in this release.
+
+---
+
+## [1.1.1] — 2026-08-25
+
+Archived on Zenodo (doi:10.5281/zenodo.22093548).
+
+Documentation only. No change to deduplication behaviour, output files, or the algorithm
+generation (still v6); results are byte-for-byte identical to 1.1.0.
+
+The accompanying methodology paper has been accepted, so every place that carried a
+"submitted for peer review" placeholder now carries the published citation:
+
+> Purkarthofer, D., Labenbacher, S., Bornemann-Cimenti, H., & Landoni, G. (2026).
+> *deduplicate.it: A simple open-source tool to remove duplicates from literature searches.*
+> Campbell Systematic Reviews, 22(3). https://doi.org/10.1177/18911803261484937
+
+### Changed
+
+- **Web app methods text**: the paste-ready methods sentence now cites
+  `(Purkarthofer et al., 2026)` and is followed by the full reference. Shown on both the
+  landing page and the results page.
+- **Web app FAQ** ("Where can I learn more?"): points at the published article instead of
+  "citation to be added upon publication".
+- **`CITATION.cff`**: `preferred-citation` moves from `status: submitted` to a complete
+  journal reference with volume, issue and DOI. The article title also drops a stray
+  "online" that was never in the published title.
+- **`README.md`**: "Citing the method" gives the full reference.
+- **CLI docstring**: gains a Citation block.
+
+### Removed
+
+- The pre-publication notice ("This tool has been submitted for peer review and is not yet
+  formally published") from both pages of the web app.
 
 ---
 

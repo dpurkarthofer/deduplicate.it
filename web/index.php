@@ -3,7 +3,7 @@
 // Literature Search Deduplication: Web Interface
 // PHP port of literature_deduplication_v6 (Python / Jupyter notebook)
 //
-// deduplicate.it release 1.1.0  ·  algorithm generation v6
+// deduplicate.it release 1.1.1  ·  algorithm generation v6
 // See CHANGELOG.md for the release history.
 //
 // Supported formats (auto-detected from file content):
@@ -89,7 +89,7 @@ if (isset($_GET['download']) && !empty($_SESSION['dedup_token'])) {
 }
 
 
-const DEDUP_VERSION = '1.1.0';
+const DEDUP_VERSION = '1.1.1';
 
 // ── Hidden diagnostics ───────────────────────────────────────────────────────
 // Off unless the request carries ?diag=<token>. Nothing is shown to users and no
@@ -1499,10 +1499,10 @@ a{color:#5b8de0}
   <?php endif; ?>
 
   <p class="stat-section" style="margin-top:1.4rem">Methods text</p>
-  <p class="caveat" style="margin-bottom:.6rem">&#9888; <strong>Submitted for peer review.</strong> This tool has been submitted for peer review and is not yet formally published. Use at your own discretion &mdash; the source code is transparently available at <a href="https://github.com/dpurkarthofer/deduplicate.it" target="_blank" rel="noopener">github.com/dpurkarthofer/deduplicate.it</a>.</p>
   <div class="cite-box">Automated deduplication of literature search results based on normalised
   digital object identifier (DOI) and title was performed using deduplicate.it
-  (Citation to be added, currently submitted for peer review). Subsequently, all remaining references and the deduplication log were reviewed manually.</div>
+  (Purkarthofer et al., 2026). Subsequently, all remaining references and the deduplication log were reviewed manually.</div>
+  <p class="info" style="margin-top:.6rem;font-size:.8rem;color:#666;line-height:1.65"><strong style="color:#555">Reference:</strong> Purkarthofer, D., Labenbacher, S., Bornemann-Cimenti, H., &amp; Landoni, G. (2026). deduplicate.it: A simple open-source tool to remove duplicates from literature searches. <em>Campbell Systematic Reviews</em>, 22(3). <a href="https://doi.org/10.1177/18911803261484937" target="_blank" rel="noopener">https://doi.org/10.1177/18911803261484937</a></p>
   <p class="info" style="margin-top:.7rem;font-size:.8rem;color:#888">Deduplication is based on exact DOI and title matching. References without a valid DOI, or without an exactly matching title, pass through unchanged &mdash; this is by design. Manual review of both the deduplicated output and the exclusion file is required.</p>
 
 <?php $has_file_warnings = !empty(array_filter($results['file_stats'], fn($fs) => !empty($fs['warning']))); ?>
@@ -1614,7 +1614,8 @@ a{color:#5b8de0}
     <summary style="cursor:pointer;font-size:.875rem;font-weight:600;color:#555;user-select:none">Where can I learn more? &rsaquo;</summary>
     <p class="info" style="margin-top:.85rem">
       The algorithm and validation are described in the accompanying methodology paper,
-      currently submitted for peer review (citation to be added upon publication).
+      published in <em>Campbell Systematic Reviews</em>
+      (<a href="https://doi.org/10.1177/18911803261484937" target="_blank" rel="noopener">doi.org/10.1177/18911803261484937</a>).
       The full source code is openly available for inspection and reuse at
       <a href="https://github.com/dpurkarthofer/deduplicate.it" target="_blank" rel="noopener">github.com/dpurkarthofer/deduplicate.it</a>.
     </p>
@@ -1655,10 +1656,10 @@ a{color:#5b8de0}
     <li><strong>Flowchart</strong> &mdash; editable, pre-filled PRISMA-style flowchart</li>
   </ul>
   <p class="stat-section" style="margin-top:1.25rem">Methods text</p>
-  <p class="caveat" style="margin-bottom:.6rem">&#9888; <strong>Submitted for peer review.</strong> This tool has been submitted for peer review and is not yet formally published. Use at your own discretion &mdash; the source code is transparently available at <a href="https://github.com/dpurkarthofer/deduplicate.it" target="_blank" rel="noopener">github.com/dpurkarthofer/deduplicate.it</a>.</p>
   <div class="cite-box">Automated deduplication of literature search results based on normalised
   digital object identifier (DOI) and title was performed using deduplicate.it
-  (Citation to be added, currently submitted for peer review). Subsequently, all remaining references and the deduplication log were reviewed manually.</div>
+  (Purkarthofer et al., 2026). Subsequently, all remaining references and the deduplication log were reviewed manually.</div>
+  <p class="info" style="margin-top:.6rem;font-size:.8rem;color:#666;line-height:1.65"><strong style="color:#555">Reference:</strong> Purkarthofer, D., Labenbacher, S., Bornemann-Cimenti, H., &amp; Landoni, G. (2026). deduplicate.it: A simple open-source tool to remove duplicates from literature searches. <em>Campbell Systematic Reviews</em>, 22(3). <a href="https://doi.org/10.1177/18911803261484937" target="_blank" rel="noopener">https://doi.org/10.1177/18911803261484937</a></p>
   <p class="info" style="margin-top:.7rem;font-size:.8rem;color:#888">Deduplication is based on exact DOI and title matching. References without a valid DOI, or without an exactly matching title, pass through unchanged &mdash; this is by design. Manual review of both the deduplicated output and the exclusion file is required.</p>
 
   <p class="stat-section" style="margin-top:1.25rem">Frequently asked questions</p>
@@ -1697,7 +1698,8 @@ a{color:#5b8de0}
     <summary style="cursor:pointer;font-size:.875rem;font-weight:600;color:#555;user-select:none">Where can I learn more? &rsaquo;</summary>
     <p class="info" style="margin-top:.85rem">
       The algorithm and validation are described in the accompanying methodology paper,
-      currently submitted for peer review (citation to be added upon publication).
+      published in <em>Campbell Systematic Reviews</em>
+      (<a href="https://doi.org/10.1177/18911803261484937" target="_blank" rel="noopener">doi.org/10.1177/18911803261484937</a>).
       The full source code is openly available for inspection and reuse at
       <a href="https://github.com/dpurkarthofer/deduplicate.it" target="_blank" rel="noopener">github.com/dpurkarthofer/deduplicate.it</a>.
     </p>

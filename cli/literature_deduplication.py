@@ -2,8 +2,15 @@
 """
 deduplicate.it — Literature Search Deduplication (command-line edition)
 -----------------------------------------------------------------------
-Release 1.1.0  ·  algorithm generation v6
+Release 1.1.1  ·  algorithm generation v6
 See CHANGELOG.md for the release history.
+
+Citation
+--------
+Purkarthofer, D., Labenbacher, S., Bornemann-Cimenti, H., & Landoni, G. (2026).
+deduplicate.it: A simple open-source tool to remove duplicates from literature
+searches. Campbell Systematic Reviews, 22(3).
+https://doi.org/10.1177/18911803261484937
 
 Deduplicates literature search exports using a compound key of
 (normalised DOI, normalised title).  Supports all major database
@@ -42,7 +49,7 @@ from collections import defaultdict, Counter
 # All supported formats (.ris, .txt, .nbib, .bib, .csv, .tsv, .ciw, .enw)
 # are auto-detected. Files are processed in alphabetical order.
 
-__version__ = '1.1.0'
+__version__ = '1.1.1'
 
 SOURCE_DIR = Path(__file__).parent / 'source'
 

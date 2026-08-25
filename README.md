@@ -90,4 +90,6 @@ A `CITATION.cff` file is included for automatic citation support.
 
 **Citing the method** (accompanying manuscript):
 
-> (Citation to be added — currently submitted for peer review.)
+> Purkarthofer, D., Labenbacher, S., Bornemann-Cimenti, H., & Landoni, G. (2026).
+> *deduplicate.it: A simple open-source tool to remove duplicates from literature searches.*
+> Campbell Systematic Reviews, 22(3). https://doi.org/10.1177/18911803261484937
