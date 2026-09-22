@@ -7,11 +7,58 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Two version numbers appear in the source and should not be confused:
 
-- the **release version** (`1.1.1`), which this file tracks;
+- the **release version** (`1.2.0`), which this file tracks;
 - the **algorithm generation** (`v6`), which names the deduplication logic — the compound
   key of (normalised DOI, normalised title) and the title-normalisation pipeline. The
   algorithm generation changes only when deduplication decisions change, and it has not
   changed in this release.
+
+---
+
+## [1.2.0] — 2026-09-22
+
+The command-line edition becomes an installable package: `pip install deduplicate-it`, then
+`deduplicate-it --source my-exports --outdir results` from any folder.
+
+No change to deduplication behaviour or to the algorithm generation (still v6). Run against
+the same inputs, 1.2.0 produces output files byte-for-byte identical to 1.1.1 — the
+deduplicated records, the excluded-duplicates audit trail, the DOI collision log and both
+PRISMA flowcharts.
+
+### Added
+
+- **`deduplicate-it` console command**, installed from PyPI as the `deduplicate-it`
+  package. The code moves into a `deduplicate_it/` package (`core.py` plus the two draw.io
+  PRISMA templates as package data); `cli/literature_deduplication.py` stays as a thin shim
+  so the single-file download keeps working.
+- **Command-line options.** Previously the input folder and output location were fixed
+  constants at the top of the script:
+  - `-s` / `--source` — folder holding the export files (default: `./source`)
+  - `-o` / `--outdir` — where to write the outputs, created if missing (default: the
+    current directory)
+  - `-f` / `--format` — output format, repeatable: `ris`, `csv`, `medline`, `xml`
+    (default: `ris`)
+  - `--version`, `--help`
+- **`pyproject.toml`** declaring the package. Still standard library only: the dependency
+  list is empty, and `requires-python` is `>=3.9`.
+
+### Changed
+
+- **`SOURCE_DIR` now resolves against the current working directory**, not against the
+  location of the script file. Under a `pip` install the script lives in `site-packages`,
+  where a `source/` folder would be invisible to the user and probably unwritable.
+- **PRISMA templates are located as package data first**, via `importlib.resources`, before
+  falling back to the previous script-relative and current-directory lookups. A plain
+  checkout and the single-file download both still find them.
+- **`main()` accepts an argument vector** (`main(argv=None)`) so it can be called from
+  Python as well as from the shell.
+
+### Notes
+
+- Running with no options is unchanged from 1.1.1: input is read from `./source`, output is
+  written to the current directory. Existing workflows need no edits.
+- Files are still processed in alphabetical order, which still sets tie-break priority
+  within a duplicate cluster.
 
 ---
 
