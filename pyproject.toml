@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deduplicate-it"
+version = "1.2.0"
+description = "Free, auditable removal of duplicate records from literature search exports for systematic reviews, scoping reviews and meta-analyses."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+  { name = "David Purkarthofer" },
+  { name = "Sebastian Labenbacher" },
+]
+keywords = [
+  "systematic-review", "scoping-review", "meta-analysis", "deduplication",
+  "evidence-synthesis", "literature-search", "PRISMA", "RIS", "BibTeX", "MEDLINE",
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Healthcare Industry",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Text Processing :: Filters",
+  "Operating System :: OS Independent",
+]
+dependencies = []          # stdlib only — verified against the current script
+
+[project.urls]
+Homepage      = "https://deduplicate.it"
+Repository    = "https://github.com/dpurkarthofer/deduplicate.it"
+Paper         = "https://doi.org/10.1177/18911803261484937"
+Archive       = "https://doi.org/10.5281/zenodo.18835297"
+Changelog     = "https://github.com/dpurkarthofer/deduplicate.it/blob/main/CHANGELOG.md"
+
+[project.scripts]
+deduplicate-it = "deduplicate_it.core:main"
+
+[tool.setuptools]
+packages = ["deduplicate_it"]
+
+[tool.setuptools.package-data]
+deduplicate_it = ["templates/*.html"]

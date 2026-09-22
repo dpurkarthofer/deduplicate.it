@@ -1,0 +1,6 @@
+# Python build artefacts (the repo became pip-installable in 1.2.0)
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/

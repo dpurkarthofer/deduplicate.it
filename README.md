@@ -4,17 +4,7 @@ Free, open-source tool for automated deduplication of literature search exports 
 
 **Web interface:** [deduplicate.it](https://deduplicate.it)
 
-[![Paper](https://img.shields.io/badge/Campbell%20Syst%20Rev-10.1177%2F18911803261484937-1a7f37)](https://doi.org/10.1177/18911803261484937)
-[![Software archive](https://img.shields.io/badge/Zenodo-10.5281%2Fzenodo.18835297-1682d4)](https://doi.org/10.5281/zenodo.18835297)
-[![License](https://img.shields.io/badge/license-Apache--2.0-lightgrey)](LICENSE)
-
-**Peer-reviewed and published.** The matching rule, the evaluation and the limitations are described in full in the methods paper:
-
-> Purkarthofer D, Labenbacher S, Bornemann-Cimenti H, Landoni G. deduplicate.it: A simple open-source tool to remove duplicates from literature searches. *Campbell Systematic Reviews*. 2026;22(3). doi:[10.1177/18911803261484937](https://doi.org/10.1177/18911803261484937)
-
-Across five real-world searches (958–2,408 records) it removed **76.6–89.6%** of the duplicates found by Rayyan-assisted manual deduplication and cut deduplication time by **68.4–86.7%**. Records without a valid DOI, and records whose DOIs collide, are never silently merged: they are retained, exported separately and sorted to the top of the output for manual review.
-
-See [Citation](#citation) for when to cite the software archive instead.
+> ⚠ Submitted for peer review. Not yet formally published. Use at your own discretion; source code is openly available for independent verification.
 
 ## Contents
 
