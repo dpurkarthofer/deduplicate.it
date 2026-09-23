@@ -39,10 +39,10 @@ PRISMA flowcharts.
   - `-o` / `--outdir` — where to write the outputs, created if missing (default: the
     current directory)
   - `-f` / `--format` — output format, repeatable: `ris`, `csv`, `medline`, `xml`
-    (default: `ris`). It **replaces** the default rather than adding to it, so
-    `--format csv` writes no RIS file; the run prints a notice at the start and again at the
-    end when RIS is not among the chosen formats.. It **replaces** the default rather than adding to it, so name
-    every format you want: `--format csv` on its own writes no RIS file.
+    (default: `ris`). It **replaces** the default rather than adding to it, so name every
+    format you want: `--format csv` on its own writes no RIS file. The run prints a notice at
+    the start, and again beside the file list at the end, whenever RIS is not among the
+    chosen formats.
   - `--version`, `--help`
 - **`pyproject.toml`** declaring the package. Still standard library only — the dependency
   list is empty. `requires-python` is **`>=3.11`**, which has been verified rather than assumed
@@ -81,7 +81,6 @@ PRISMA flowcharts.
   module global directly — the documented way to choose formats before 1.2.0 — crashed
   after a successful run. Unreachable through the command line, where `--format`
   validates its argument.
-
 - **Errors name their cause.** A failure that the user has to fix — unreadable input,
   unwritable output, a full disk — prints the message, the file, the exception class and the
   errno, then exits non-zero. No traceback, but enough to tell a mistyped path from a genuine
@@ -114,9 +113,11 @@ PRISMA flowcharts.
   both interpreters found the two databases disagree on **84** of the ~15,200 that title
   normalisation can treat specially — and every one of the 84 lies in the Supplementary
   Multilingual Plane (Brahmic, Egyptian Hieroglyph controls, Gurung Khema, Kirat Rai, Ahom, and
-  one code point each of Arabic Extended-B and Lao). **None** is in Latin, Greek, Cyrillic or the
-  Combining Diacritical Marks block, so none can occur in a bibliographic record from a supported
-  database. 3.9 and 3.10 are excluded because no such interpreter was available to test.
+  one code point each of Arabic Extended-B and Lao). Every character actually present in the two
+  evaluation sets — 363 distinct non-ASCII ones, spanning Latin, Cyrillic, Greek, Arabic including
+  its combining harakat, CJK, and punctuation — lies in the Basic Multilingual Plane, in blocks
+  that have been assigned and category-stable since Unicode 1.x. 3.9 and 3.10 are excluded because
+  no such interpreter was available to test.
 - **All editions now share one release version.** The web application's `DEDUP_VERSION` and
   the header comment in `index.php` move to 1.2.0 alongside the package, even though the web
   edition is functionally unchanged in this release. One version number, one algorithm
