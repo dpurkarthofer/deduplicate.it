@@ -30,7 +30,7 @@ PRISMA flowcharts.
 - **`deduplicate-it` console command**, installed from PyPI as the `deduplicate-it`
   package. The code moves into a `deduplicate_it/` package (`core.py` plus the two draw.io
   PRISMA templates as package data); `cli/literature_deduplication.py` stays as a thin shim
-  so the single-file download keeps working.
+  for people running from a checkout.
 - **Command-line options.** Previously the input folder and output location were fixed
   constants at the top of the script:
   - `-s` / `--source` — folder holding the export files (default: `./source`)
@@ -39,8 +39,10 @@ PRISMA flowcharts.
   - `-f` / `--format` — output format, repeatable: `ris`, `csv`, `medline`, `xml`
     (default: `ris`)
   - `--version`, `--help`
-- **`pyproject.toml`** declaring the package. Still standard library only: the dependency
-  list is empty, and `requires-python` is `>=3.9`.
+- **`pyproject.toml`** declaring the package. Still standard library only — the dependency
+  list is empty. `requires-python` is **`>=3.11`**: the package is deliberately not claiming
+  support for 3.9 or 3.10, because no interpreter older than 3.11 was available to test
+  against and an untested claim is worse than a narrow one.
 
 ### Changed
 
@@ -48,13 +50,34 @@ PRISMA flowcharts.
   location of the script file. Under a `pip` install the script lives in `site-packages`,
   where a `source/` folder would be invisible to the user and probably unwritable.
 - **PRISMA templates are located as package data first**, via `importlib.resources`, before
-  falling back to the previous script-relative and current-directory lookups. A plain
-  checkout and the single-file download both still find them.
+  falling back to the previous script-relative and current-directory lookups, so a plain
+  checkout still finds them.
 - **`main()` accepts an argument vector** (`main(argv=None)`) so it can be called from
   Python as well as from the shell.
 
+### Removed
+
+- **The single-file download is no longer self-contained.** Until 1.1.1,
+  `literature_deduplication.py` could be downloaded on its own, dropped next to a `source/`
+  folder and run. It is now a thin shim that needs the `deduplicate_it/` package beside it,
+  and it exits with an instruction rather than a traceback if the package is missing.
+
+  **What to do instead:** `pip install deduplicate-it`, or download the repository or a
+  release archive rather than the single file. Both routes run the same code.
+
+  **Why:** the two cannot both be true. A file that works standalone must carry its own
+  constants and templates; a file that installs cleanly must not. Keeping the standalone
+  copy in sync with the package would mean two editions of the same 1,100 lines drifting
+  apart — which is the defect 1.1.0 was released to fix, between the Python and PHP
+  editions. The code itself is still one readable file (`deduplicate_it/core.py`), so
+  independent verification is unaffected.
+
 ### Notes
 
+- **All editions now share one release version.** The web application's `DEDUP_VERSION` and
+  the header comment in `index.php` move to 1.2.0 alongside the package, even though the web
+  edition is functionally unchanged in this release. One version number, one algorithm
+  generation, no per-edition drift.
 - Running with no options is unchanged from 1.1.1: input is read from `./source`, output is
   written to the current directory. Existing workflows need no edits.
 - Files are still processed in alphabetical order, which still sets tie-break priority

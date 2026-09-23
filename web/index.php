@@ -3,7 +3,7 @@
 // Literature Search Deduplication: Web Interface
 // PHP port of literature_deduplication_v6 (Python / Jupyter notebook)
 //
-// deduplicate.it release 1.1.1  ·  algorithm generation v6
+// deduplicate.it release 1.2.0  ·  algorithm generation v6
 // See CHANGELOG.md for the release history.
 //
 // Supported formats (auto-detected from file content):
@@ -89,7 +89,7 @@ if (isset($_GET['download']) && !empty($_SESSION['dedup_token'])) {
 }
 
 
-const DEDUP_VERSION = '1.1.1';
+const DEDUP_VERSION = '1.2.0';
 
 // ── Hidden diagnostics ───────────────────────────────────────────────────────
 // Off unless the request carries ?diag=<token>. Nothing is shown to users and no

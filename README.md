@@ -16,14 +16,30 @@ Deploy to any PHP 8.x server. Place `index.php`, `legal.php`, and both `.drawio.
 running PHP-FPM, keep it beside `index.php`; on other setups apply the equivalent
 directives in `php.ini`.
 
-### `cli/` — Python command-line script
-No external dependencies (Python standard library only).
+### `deduplicate_it/` — Python command-line tool
+No external dependencies (Python standard library only). Requires Python 3.11 or newer.
+
+**Install:**
+
+```bash
+pip install deduplicate-it
+```
 
 **Usage:**
-1. Place all export files in a folder called `source/` next to `literature_deduplication.py`
-2. Run: `python3 literature_deduplication.py`
+
+```bash
+deduplicate-it --source path/to/exports --outdir path/to/results
+```
+
+With no arguments it reads `./source` and writes to the current directory. Other options:
+`--format` (repeatable: `ris`, `csv`, `medline`, `xml`; default `ris`), `--version`, `--help`.
 
 Files are auto-detected by format; processed in alphabetical order (sets tie-break priority).
+
+**Running from a clone instead of installing:** `python3 cli/literature_deduplication.py` still
+works from a checkout — it is a thin wrapper around the same code. It needs the `deduplicate_it/`
+package beside it, so download the repository (or a release archive), not that one file on its own.
+Before 1.2.0 the script was self-contained; see the note in [CHANGELOG.md](CHANGELOG.md).
 
 ## Supported input formats
 
@@ -53,8 +69,8 @@ named.
 | `deduplicated_prisma_flowchart_extended.html` | As above, with the per-database breakdown |
 
 The web application offers all four deduplicated-reference formats for download. The
-command-line script writes RIS only by default; edit `OUTPUT_FORMATS` at the top of
-`literature_deduplication.py` to add `'csv'`, `'medline'` or `'xml'`.
+command-line tool writes RIS only by default; pass `--format` once per additional format, for
+example `--format csv --format medline`.
 
 ## Algorithm
 
@@ -68,9 +84,10 @@ See the accompanying manuscript and Supplement A for a full step-by-step technic
 
 ## Version history
 
-See [CHANGELOG.md](CHANGELOG.md). The **release version** (currently 1.1.0) and the
+See [CHANGELOG.md](CHANGELOG.md). The **release version** (currently 1.2.0) and the
 **algorithm generation** (`v6`) are tracked separately: the algorithm generation changes
-only when deduplication decisions change.
+only when deduplication decisions change. The web application and the Python package share
+the release version, so 1.2.0 means the same algorithm in both.
 
 ## License
 
