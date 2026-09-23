@@ -37,7 +37,8 @@ PRISMA flowcharts.
   - `-o` / `--outdir` — where to write the outputs, created if missing (default: the
     current directory)
   - `-f` / `--format` — output format, repeatable: `ris`, `csv`, `medline`, `xml`
-    (default: `ris`)
+    (default: `ris`). It **replaces** the default rather than adding to it, so name
+    every format you want: `--format csv` on its own writes no RIS file.
   - `--version`, `--help`
 - **`pyproject.toml`** declaring the package. Still standard library only — the dependency
   list is empty. `requires-python` is **`>=3.11`**: the package is deliberately not claiming
@@ -54,6 +55,29 @@ PRISMA flowcharts.
   checkout still finds them.
 - **`main()` accepts an argument vector** (`main(argv=None)`) so it can be called from
   Python as well as from the shell.
+- **Failures print a message instead of a traceback.** An unreadable export, an
+  unwritable or non-existent `--outdir`, an `--outdir` that is actually a file, and
+  Ctrl-C now end with one line naming the problem and a non-zero exit status.
+- **A source folder whose files yield no records** is reported as an error before
+  anything is written. Previously it wrote empty output files and then raised
+  `ZeroDivisionError` while computing the duplicate percentage — a defect that dates
+  back to 1.0.0 and that `--source` makes much easier to hit.
+- **Producing no output is now a non-zero exit status.** A missing source folder, a
+  folder with no supported files, and a folder whose files yield no records all exited
+  0 before, so a script could not tell a successful run from one that did nothing. They
+  exit 1. A successful run still exits 0, and the messages themselves are unchanged.
+- **`cli/literature_deduplication.py` runs the checkout's own code.** It puts the
+  repository root ahead of `sys.path`, so a copy installed from PyPI cannot shadow the
+  source being read. Independent verification has to run the file in front of you.
+
+### Fixed
+
+- The final summary no longer raises `KeyError` on an unrecognised entry in
+  `OUTPUT_FORMATS`. The loop that writes the files skipped unknown formats with a
+  warning, but the loop that listed them afterwards did not, so a caller setting the
+  module global directly — the documented way to choose formats before 1.2.0 — crashed
+  after a successful run. Unreachable through the command line, where `--format`
+  validates its argument.
 
 ### Removed
 

@@ -27,19 +27,20 @@ Algorithm (generation v6)
 * Multi-format output:  RIS, CSV, MEDLINE tagged text, XML
 * Flowchart HTML generated from draw.io template
 
-Uses only the Python standard library — no pip install required.
+Uses only the Python standard library — no third-party dependencies.
 
 Usage
 -----
     Installed from PyPI:
         deduplicate-it --source my-exports --outdir results
 
-    From a checkout, or from the single downloaded script:
+    From a checkout:
         1. Place all export files in a folder called "source/".
-        2. Run: python3 literature_deduplication.py
+        2. Run: python3 cli/literature_deduplication.py
 
     Both routes default to ./source for input and the current directory
-    for output.
+    for output. Since 1.2.0 this file is part of a package: it is no
+    longer self-contained and cannot be downloaded on its own.
 
 All supported formats are auto-detected; files are processed in
 alphabetical order, which also sets tie-break priority (files earlier
@@ -812,17 +813,42 @@ def _parse_args(argv=None):
                    help='where to write the outputs (default: current directory)')
     p.add_argument('-f', '--format', dest='formats', action='append',
                    choices=['ris', 'csv', 'medline', 'xml'],
-                   help='output format; repeat for several (default: ris)')
+                   help='output format; repeat for several. Replaces the default '
+                        'rather than adding to it, so name every format you want, '
+                        'RIS included (default: ris)')
     p.add_argument('--version', action='version',
                    version=f'deduplicate.it {__version__}')
     return p.parse_args(argv)
 
 
 def main(argv=None):
+    """Entry point. Returns None on success; raises SystemExit on a user error."""
+    try:
+        return _run(_parse_args(argv))
+    except OSError as exc:
+        # Unreadable input, unwritable output, a full disk: the user's problem to
+        # fix, so say which file and stop rather than printing a traceback.
+        name = getattr(exc, 'filename', None)
+        print(f'  ERROR: {exc.strerror or exc}' + (f': {name}' if name else ''))
+        raise SystemExit(1)
+    except KeyboardInterrupt:
+        print('\n  Interrupted. No output was completed.')
+        raise SystemExit(130)
+
+
+def _run(args):
     global SOURCE_DIR, OUTPUT_FORMATS, OUTPUT_RIS, OUTPUT_CSV, OUTPUT_COLLISIONS
-    args = _parse_args(argv)
     SOURCE_DIR = args.source
-    args.outdir.mkdir(parents=True, exist_ok=True)
+    try:
+        args.outdir.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        print(f'  ERROR: --outdir is not a folder: {args.outdir}')
+        print(f'         A file of that name already exists.')
+        raise SystemExit(2)
+    except OSError as exc:
+        print(f'  ERROR: Could not create the output folder: {args.outdir}')
+        print(f'         {exc.strerror or exc}')
+        raise SystemExit(2)
     OUTPUT_RIS        = str(args.outdir / 'deduplicated.ris')
     OUTPUT_CSV        = str(args.outdir / 'excluded_duplicates.csv')
     OUTPUT_COLLISIONS = str(args.outdir / 'doi_collisions.csv')
@@ -842,13 +868,13 @@ def main(argv=None):
         print(f'  ERROR: Source folder not found: {SOURCE_DIR}')
         print(f'         Create a "source/" folder and place your export files there,')
         print(f'         or point --source at the folder that holds them.')
-        return
+        raise SystemExit(1)
     input_files = sorted(p for p in SOURCE_DIR.iterdir()
                          if p.is_file() and p.suffix.lower() in _supported_exts)
     if not input_files:
         print(f'  ERROR: No supported files found in: {SOURCE_DIR}')
         print(f'         Supported extensions: {", ".join(sorted(_supported_exts))}')
-        return
+        raise SystemExit(1)
     print(f'  Found {len(input_files)} file(s) in: {SOURCE_DIR}')
 
     for fpath in input_files:
@@ -874,6 +900,12 @@ def main(argv=None):
         r['uid'] = i
 
     n_total    = len(all_records)
+    if not n_total:
+        print(f'  ERROR: No records could be read from any file in: {SOURCE_DIR}')
+        print(f'         The files were found but none parsed as a supported export.')
+        print(f'         Check that they are real database exports and not empty,')
+        print(f'         truncated, or PubMed "Summary" format.')
+        raise SystemExit(1)
     n_with_doi = sum(1 for r in all_records if r['norm_doi'])
     n_no_doi   = n_total - n_with_doi
 
@@ -1122,6 +1154,8 @@ def main(argv=None):
     print('=' * 70)
     print('  Done.')
     for fmt in OUTPUT_FORMATS:
+        if fmt not in _fmt_writers:
+            continue          # already warned about above, when nothing was written
         fpath, _ = _fmt_writers[fmt]
         hints = {'ris': 'import into Rayyan, Covidence, Endnote, ...',
                  'csv': 'tabular records for spreadsheet review',
