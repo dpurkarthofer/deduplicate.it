@@ -830,6 +830,11 @@ def main(argv=None):
         # fix, so say which file and stop rather than printing a traceback.
         name = getattr(exc, 'filename', None)
         print(f'  ERROR: {exc.strerror or exc}' + (f': {name}' if name else ''))
+        # Name the exception class and errno too: this handler is deliberately
+        # broad, so without them a genuine bug is indistinguishable from a
+        # mistyped path.
+        print(f'         ({type(exc).__name__}'
+              + (f', errno {exc.errno}' if exc.errno is not None else '') + ')')
         raise SystemExit(1)
     except KeyboardInterrupt:
         print('\n  Interrupted. No output was completed.')
@@ -854,6 +859,11 @@ def _run(args):
     OUTPUT_COLLISIONS = str(args.outdir / 'doi_collisions.csv')
     if args.formats:
         OUTPUT_FORMATS = args.formats
+        if 'ris' not in OUTPUT_FORMATS:
+            print('  NOTE: --format replaces the default rather than adding to it,')
+            print('        so no deduplicated.ris will be written this run.')
+            print('        Use --format ris as well if you want it.')
+            print()
 
     # ── STEP 1 — LOAD ─────────────────────────────────────────────────────────
     print('=' * 70)
@@ -1167,6 +1177,10 @@ def _run(args):
     print(f'       (audit trail of excluded duplicates, with norm_title columns)')
     print(f'    -> {OUTPUT_COLLISIONS}')
     print(f'       (DOI collision log for manual review; includes in_deduplicated_output column)')
+    if 'ris' not in OUTPUT_FORMATS:
+        print()
+        print('  NOTE: no deduplicated.ris was written — --format replaces the default')
+        print('        rather than adding to it. Re-run with --format ris to get one.')
 
 
 if __name__ == '__main__':

@@ -37,7 +37,9 @@ PRISMA flowcharts.
   - `-o` / `--outdir` — where to write the outputs, created if missing (default: the
     current directory)
   - `-f` / `--format` — output format, repeatable: `ris`, `csv`, `medline`, `xml`
-    (default: `ris`). It **replaces** the default rather than adding to it, so name
+    (default: `ris`). It **replaces** the default rather than adding to it, so
+    `--format csv` writes no RIS file; the run prints a notice at the start and again at the
+    end when RIS is not among the chosen formats.. It **replaces** the default rather than adding to it, so name
     every format you want: `--format csv` on its own writes no RIS file.
   - `--version`, `--help`
 - **`pyproject.toml`** declaring the package. Still standard library only — the dependency
@@ -77,6 +79,11 @@ PRISMA flowcharts.
   module global directly — the documented way to choose formats before 1.2.0 — crashed
   after a successful run. Unreachable through the command line, where `--format`
   validates its argument.
+
+- **Errors name their cause.** A failure that the user has to fix — unreadable input,
+  unwritable output, a full disk — prints the message, the file, the exception class and the
+  errno, then exits non-zero. No traceback, but enough to tell a mistyped path from a genuine
+  bug.
 
 ### Removed
 
