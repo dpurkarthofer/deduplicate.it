@@ -15,7 +15,9 @@ Two version numbers appear in the source and should not be confused:
 
 ---
 
-## [1.2.0] — 2026-09-22
+## [1.2.0] — 2026-09-23
+
+Archived on Zenodo (doi:10.5281/zenodo.22918233).
 
 The command-line edition becomes an installable package: `pip install deduplicate-it`, then
 `deduplicate-it --source my-exports --outdir results` from any folder.
