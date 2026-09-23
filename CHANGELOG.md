@@ -41,9 +41,8 @@ PRISMA flowcharts.
     every format you want: `--format csv` on its own writes no RIS file.
   - `--version`, `--help`
 - **`pyproject.toml`** declaring the package. Still standard library only — the dependency
-  list is empty. `requires-python` is **`>=3.11`**: the package is deliberately not claiming
-  support for 3.9 or 3.10, because no interpreter older than 3.11 was available to test
-  against and an untested claim is worse than a narrow one.
+  list is empty. `requires-python` is **`>=3.11`**, which has been verified rather than assumed
+  (see Notes).
 
 ### Changed
 
@@ -98,6 +97,17 @@ PRISMA flowcharts.
 
 ### Notes
 
+- **The supported Python range does not change results.** Title normalisation strips characters
+  by Unicode category, and the Unicode database ships with the interpreter, so in principle the
+  same title could normalise differently on different Python versions. It does not here. Output is
+  byte-for-byte identical on Python 3.11 (Unicode 14.0.0) and 3.14 (Unicode 16.0.0) across both
+  evaluation sets and all five output files. An exhaustive walk of all 1,114,112 code points on
+  both interpreters found the two databases disagree on **84** of the ~15,200 that title
+  normalisation can treat specially — and every one of the 84 lies in the Supplementary
+  Multilingual Plane (Brahmic, Egyptian Hieroglyph controls, Gurung Khema, Kirat Rai, Ahom, and
+  one code point each of Arabic Extended-B and Lao). **None** is in Latin, Greek, Cyrillic or the
+  Combining Diacritical Marks block, so none can occur in a bibliographic record from a supported
+  database. 3.9 and 3.10 are excluded because no such interpreter was available to test.
 - **All editions now share one release version.** The web application's `DEDUP_VERSION` and
   the header comment in `index.php` move to 1.2.0 alongside the package, even though the web
   edition is functionally unchanged in this release. One version number, one algorithm
