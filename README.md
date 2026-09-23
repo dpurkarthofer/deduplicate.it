@@ -4,7 +4,17 @@ Free, open-source tool for automated deduplication of literature search exports 
 
 **Web interface:** [deduplicate.it](https://deduplicate.it)
 
-> ⚠ Submitted for peer review. Not yet formally published. Use at your own discretion; source code is openly available for independent verification.
+[![Paper](https://img.shields.io/badge/Campbell%20Syst%20Rev-10.1177%2F18911803261484937-1a7f37)](https://doi.org/10.1177/18911803261484937)
+[![Software archive](https://img.shields.io/badge/Zenodo-10.5281%2Fzenodo.18835297-1682d4)](https://doi.org/10.5281/zenodo.18835297)
+[![License](https://img.shields.io/badge/license-Apache--2.0-lightgrey)](LICENSE)
+
+**Peer-reviewed and published.** The matching rule, the evaluation and the limitations are described in full in the methods paper:
+
+> Purkarthofer D, Labenbacher S, Bornemann-Cimenti H, Landoni G. deduplicate.it: A simple open-source tool to remove duplicates from literature searches. *Campbell Systematic Reviews*. 2026;22(3). doi:[10.1177/18911803261484937](https://doi.org/10.1177/18911803261484937)
+
+Across five real-world searches (958–2,408 records) it removed **76.6–89.6%** of the duplicates found by Rayyan-assisted manual deduplication and cut deduplication time by **68.4–86.7%**. Records without a valid DOI, and records whose DOIs collide, are never silently merged: they are retained, exported separately and sorted to the top of the output for manual review.
+
+See [Citation](#citation) for when to cite the software archive instead.
 
 ## Contents
 
@@ -69,8 +79,9 @@ named.
 | `deduplicated_prisma_flowchart_extended.html` | As above, with the per-database breakdown |
 
 The web application offers all four deduplicated-reference formats for download. The
-command-line tool writes RIS only by default; pass `--format` once per additional format, for
-example `--format csv --format medline`.
+command-line tool writes RIS only by default. `--format` **replaces** that default rather than
+adding to it, so name every format you want, RIS included: `--format ris --format csv` writes
+both, while `--format csv` on its own writes no RIS file.
 
 ## Algorithm
 
