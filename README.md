@@ -24,7 +24,11 @@ Deploy to any PHP 8.x server. Place `index.php`, `legal.php`, and both `.drawio.
 `.user.ini` raises the upload and memory limits the tool needs — PHP's default
 `upload_max_filesize` of 2 MB is smaller than a typical database export. On shared hosting
 running PHP-FPM, keep it beside `index.php`; on other setups apply the equivalent
-directives in `php.ini`.
+directives in `php.ini`. With `memory_limit = 256M`, one run takes roughly 60 MB of exports.
+
+Results are written to PHP's temporary directory (`sys_get_temp_dir()`), which must be
+writable. Each run gets its own folder, removed when the same browser session runs again
+or once it is an hour old.
 
 ### `deduplicate_it/` — Python command-line tool
 No external dependencies (Python standard library only). Requires Python 3.11 or newer.

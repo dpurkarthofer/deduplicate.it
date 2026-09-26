@@ -34,26 +34,37 @@ if (isset($_GET['view']) && !empty($_SESSION['dedup_token'])) {
 }
 
 // ── Download handlers ────────────────────────────────────────────────────────
+// The record outputs live in files under results_dir(), not in the session: a
+// large search produced a session of ~100 MB that every later request had to load
+// and unserialize before any code ran. The session holds only the token and the
+// two small flowcharts.
 if (isset($_GET['download']) && !empty($_SESSION['dedup_token'])) {
     if (($_GET['tok'] ?? '') !== $_SESSION['dedup_token']) {
         http_response_code(403); exit;
     }
-    if ($_GET['download'] === 'ris' && !empty($_SESSION['dedup_ris'])) {
-        header('Content-Type: application/x-research-info-systems; charset=utf-8');
-        header('Content-Disposition: attachment; filename="deduplicated.ris"');
-        echo $_SESSION['dedup_ris'];
-        exit;
-    }
-    if ($_GET['download'] === 'csv' && !empty($_SESSION['dedup_csv'])) {
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="excluded_duplicates.csv"');
-        echo $_SESSION['dedup_csv'];
-        exit;
-    }
-    if ($_GET['download'] === 'collisions' && !empty($_SESSION['dedup_collisions'])) {
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="doi_collisions.csv"');
-        echo $_SESSION['dedup_collisions'];
+    $result_files = [
+        'ris'        => ['deduplicated.ris',        'application/x-research-info-systems; charset=utf-8'],
+        'csv'        => ['excluded_duplicates.csv', 'text/csv; charset=utf-8'],
+        'collisions' => ['doi_collisions.csv',      'text/csv; charset=utf-8'],
+        'dedupcsv'   => ['deduplicated.csv',        'text/csv; charset=utf-8'],
+        'medline'    => ['deduplicated.txt',        'text/plain; charset=utf-8'],
+        'xml'        => ['deduplicated.xml',        'application/xml; charset=utf-8'],
+    ];
+    if (isset($result_files[$_GET['download']])) {
+        [$fname, $ctype] = $result_files[$_GET['download']];
+        $path = results_dir($_SESSION['dedup_token']) . '/' . $fname;
+        session_write_close();   // do not hold the session lock while streaming
+        if (!is_file($path) || filesize($path) === 0) {
+            http_response_code(410);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo "These results are no longer available. Results are kept for one hour.\n"
+               . "Please run the deduplication again.\n";
+            exit;
+        }
+        header("Content-Type: $ctype");
+        header("Content-Disposition: attachment; filename=\"$fname\"");
+        header('Content-Length: ' . filesize($path));
+        readfile($path);
         exit;
     }
     if ($_GET['download'] === 'flowchart' && !empty($_SESSION['dedup_flowchart'])) {
@@ -66,24 +77,6 @@ if (isset($_GET['download']) && !empty($_SESSION['dedup_token'])) {
         header('Content-Type: text/html; charset=utf-8');
         header('Content-Disposition: attachment; filename="prisma_flowchart_extended.html"');
         echo $_SESSION['dedup_flowchart_complex'];
-        exit;
-    }
-    if ($_GET['download'] === 'dedupcsv' && !empty($_SESSION['dedup_dedupcsv'])) {
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="deduplicated.csv"');
-        echo $_SESSION['dedup_dedupcsv'];
-        exit;
-    }
-    if ($_GET['download'] === 'medline' && !empty($_SESSION['dedup_medline'])) {
-        header('Content-Type: text/plain; charset=utf-8');
-        header('Content-Disposition: attachment; filename="deduplicated.txt"');
-        echo $_SESSION['dedup_medline'];
-        exit;
-    }
-    if ($_GET['download'] === 'xml' && !empty($_SESSION['dedup_xml'])) {
-        header('Content-Type: application/xml; charset=utf-8');
-        header('Content-Disposition: attachment; filename="deduplicated.xml"');
-        echo $_SESSION['dedup_xml'];
         exit;
     }
 }
@@ -170,6 +163,36 @@ function dbg(string $msg): void {
         memory_get_peak_usage(true) / 1048576, $msg);
     @error_log($line, 3, diag_log_path());   // type 3 = append to file, ignores log_errors
     @error_log(rtrim($line));                // and to the server log, if it is enabled
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESULT FILES
+// Each run writes its outputs to its own directory in the system temp dir,
+// named after the run's random token. A new run removes the previous run of the
+// same session, and every run removes directories older than RESULT_TTL, so
+// uploaded references are not kept on the server beyond that.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RESULT_TTL = 3600;   // seconds; the expiry message in the download handler says "one hour"
+
+function results_dir(string $tok): string {
+    // The token is generated server-side, but reduce it to hex anyway so the
+    // path can never leave the temp dir.
+    return rtrim(sys_get_temp_dir(), '/') . '/ddi-results-'
+         . preg_replace('/[^0-9a-f]/', '', $tok);
+}
+
+function remove_results_dir(string $dir): void {
+    foreach (glob($dir . '/*') ?: [] as $f) @unlink($f);
+    @rmdir($dir);
+}
+
+function sweep_results(): void {
+    $cutoff = time() - RESULT_TTL;
+    foreach (glob(rtrim(sys_get_temp_dir(), '/') . '/ddi-results-*', GLOB_ONLYDIR) ?: [] as $dir) {
+        if (@filemtime($dir) < $cutoff) remove_results_dir($dir);
+    }
 }
 
 
@@ -418,12 +441,12 @@ function make_rec(string $raw_doi, bool $has_abstract, array $ris_fields,
 // Tagged format: 4-char tag + "- " + value; 6-space continuation lines.
 // ═══════════════════════════════════════════════════════════════════════════
 
-function parse_medline(string $content, string $filename): array {
+function parse_medline(iterable $lines, string $filename): array {
     $records = [];
     $raw     = [];
     $last    = null;
 
-    foreach (explode("\n", $content) as $line) {
+    foreach ($lines as $line) {
         $line = rtrim($line, "\r\n");
         if (trim($line) === '') {
             if ($raw) { $records[] = _medline_to_rec($raw, $filename); $raw = []; $last = null; }
@@ -510,11 +533,11 @@ function _ml_pt_to_ris(string $pt): string {
 // Handles Embase/Ovid, Cochrane CENTRAL, CINAHL, Scopus RIS, WoS RIS, etc.
 // ═══════════════════════════════════════════════════════════════════════════
 
-function parse_ris(string $content, string $filename): array {
+function parse_ris(iterable $lines, string $filename): array {
     $records = [];
     $fields  = [];
 
-    foreach (explode("\n", $content) as $line) {
+    foreach ($lines as $line) {
         $line = rtrim(ltrim($line, "\xef\xbb\xbf"), "\r\n");
         if (preg_match('/^ER\s*-?\s*$/', trim($line))) {
             if ($fields) { $records[] = _ris_to_rec($fields, $filename); $fields = []; }
@@ -551,12 +574,12 @@ function _ris_to_rec(array $fields, string $filename): array {
 // 2-char tags; 3-space continuation lines; records end with "ER".
 // ═══════════════════════════════════════════════════════════════════════════
 
-function parse_wos(string $content, string $filename): array {
+function parse_wos(iterable $lines, string $filename): array {
     $records = [];
     $raw     = [];
     $last    = null;
 
-    foreach (explode("\n", $content) as $line) {
+    foreach ($lines as $line) {
         $line    = rtrim($line, "\r\n");
         $stripped = trim($line);
         if ($stripped === '' || preg_match('/^(?:FN|VR)\s/', $line)) continue;
@@ -736,8 +759,37 @@ function parse_csv_file(string $content, string $filename): array {
 // FORMAT DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════
 
-function load_content(string $content, string $filename): array {
-    $fmt = detect_format($content);
+// Yields the lines of a file exactly as explode("\n", file_get_contents($path))
+// would, including the empty last element after a trailing newline, without
+// ever holding the whole file in memory. Splitting a 40 MB export in one go
+// needed over 200 MB on its own.
+function file_lines(string $path): Generator {
+    $fh = fopen($path, 'rb');
+    if ($fh === false) throw new RuntimeException('Could not read the uploaded file.');
+    try {
+        $ends_with_nl = true;   // an empty file yields one empty line, as explode() does
+        while (($line = fgets($fh)) !== false) {
+            $ends_with_nl = str_ends_with($line, "\n");
+            yield $ends_with_nl ? substr($line, 0, -1) : $line;
+        }
+        if ($ends_with_nl) yield '';
+    } finally {
+        fclose($fh);
+    }
+}
+
+function read_whole(string $path): string {
+    $content = file_get_contents($path);
+    if ($content === false) throw new RuntimeException('Could not read the uploaded file.');
+    return $content;
+}
+
+// The line-based formats are read from disk as they are parsed. BibTeX and
+// CSV/TSV are parsed as a whole and are read in full, as before.
+function load_file(string $path, string $filename): array {
+    $sample = file_get_contents($path, false, null, 0, 4096);
+    if ($sample === false) throw new RuntimeException('Could not read the uploaded file.');
+    $fmt = detect_format($sample);
     if ($fmt === 'pubmed_summary') {
         return [[], 'PubMed Summary',
             'PubMed Summary format is not supported. Please export from PubMed using '
@@ -750,12 +802,11 @@ function load_content(string $content, string $filename): array {
         $fmt = $ext_map[$ext] ?? 'ris';
     }
     $recs = match ($fmt) {
-        'medline' => parse_medline($content, $filename),
-        'ris'     => parse_ris($content, $filename),
-        'wos'     => parse_wos($content, $filename),
-        'bibtex'  => parse_bibtex($content, $filename),
-        'csv'     => parse_csv_file($content, $filename),
-        default   => parse_ris($content, $filename),
+        'medline' => parse_medline(file_lines($path), $filename),
+        'wos'     => parse_wos(file_lines($path), $filename),
+        'bibtex'  => parse_bibtex(read_whole($path), $filename),
+        'csv'     => parse_csv_file(read_whole($path), $filename),
+        default   => parse_ris(file_lines($path), $filename),
     };
     return [$recs, $fmt, null];
 }
@@ -835,11 +886,13 @@ function generate_complex_flowchart(int $n_total, int $n_excluded): string {
 // OUTPUT WRITERS FOR DEDUPLICATED RECORDS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function recs_to_dedup_csv(array $recs): string {
+// Each writer streams to an open file handle, one record at a time, so the
+// finished output is never held in memory.
+
+function write_dedup_csv(array $recs, $fh): void {
     $cols = ['record_type','title','authors','year','journal','volume','issue',
              'start_page','end_page','doi','issn','abstract','keywords',
              'accession_number','url','source_file','source_format'];
-    $fh = fopen('php://temp', 'r+');
     fputcsv($fh, $cols);
     foreach ($recs as $rec) {
         $f = $rec['ris_fields'];
@@ -863,60 +916,89 @@ function recs_to_dedup_csv(array $recs): string {
             $rec['source_format'],
         ]);
     }
-    rewind($fh);
-    $out = stream_get_contents($fh);
-    fclose($fh);
-    return $out;
 }
 
-function recs_to_medline_txt(array $recs): string {
-    $blocks = [];
+function write_medline_txt(array $recs, $fh): void {
+    $sep = '';
     foreach ($recs as $rec) {
-        $f = $rec['ris_fields'];
-        $b = [];
-
-        $ti = $f['TI'][0] ?? ($f['T1'][0] ?? '');
-        if ($ti !== '') $b[] = "TI  - $ti";
-
-        foreach ($f['AU'] ?? ($f['A1'] ?? []) as $au) $b[] = "AU  - $au";
-
-        $ab = $f['AB'][0] ?? ($f['N2'][0] ?? '');
-        if ($ab !== '') $b[] = "AB  - $ab";
-
-        $py = $f['PY'][0] ?? ($f['Y1'][0] ?? '');
-        if ($py !== '') $b[] = "DP  - $py";
-
-        $jo = $f['JO'][0] ?? ($f['JF'][0] ?? '');
-        if ($jo !== '') $b[] = "JT  - $jo";
-
-        $j2 = $f['J2'][0] ?? '';
-        if ($j2 !== '') $b[] = "TA  - $j2";
-
-        $vl = $f['VL'][0] ?? '';
-        if ($vl !== '') $b[] = "VI  - $vl";
-
-        $is = $f['IS'][0] ?? '';
-        if ($is !== '') $b[] = "IP  - $is";
-
-        $sp = $f['SP'][0] ?? '';
-        $ep = $f['EP'][0] ?? '';
-        if ($sp !== '') $b[] = "PG  - " . ($ep !== '' ? "$sp-$ep" : $sp);
-
-        $sn = $f['SN'][0] ?? '';
-        if ($sn !== '') $b[] = "SN  - $sn";
-
-        foreach ($f['KW'] ?? [] as $kw) $b[] = "MH  - $kw";
-
-        if ($rec['raw_doi'] !== '') $b[] = "AID - {$rec['raw_doi']} [doi]";
-
-        $an = $f['AN'][0] ?? '';
-        if ($an !== '') $b[] = "PMID- $an";
-
-        $b[] = "SO  - {$rec['source_file']}";
-
-        if ($b) $blocks[] = implode("\n", $b);
+        fwrite($fh, $sep . medline_block($rec));
+        $sep = "\n\n";
     }
-    return implode("\n\n", $blocks) . "\n";
+    fwrite($fh, "\n");
+}
+
+function medline_block(array $rec): string {
+    $f = $rec['ris_fields'];
+    $b = [];
+
+    $ti = $f['TI'][0] ?? ($f['T1'][0] ?? '');
+    if ($ti !== '') $b[] = "TI  - $ti";
+
+    foreach ($f['AU'] ?? ($f['A1'] ?? []) as $au) $b[] = "AU  - $au";
+
+    $ab = $f['AB'][0] ?? ($f['N2'][0] ?? '');
+    if ($ab !== '') $b[] = "AB  - $ab";
+
+    $py = $f['PY'][0] ?? ($f['Y1'][0] ?? '');
+    if ($py !== '') $b[] = "DP  - $py";
+
+    $jo = $f['JO'][0] ?? ($f['JF'][0] ?? '');
+    if ($jo !== '') $b[] = "JT  - $jo";
+
+    $j2 = $f['J2'][0] ?? '';
+    if ($j2 !== '') $b[] = "TA  - $j2";
+
+    $vl = $f['VL'][0] ?? '';
+    if ($vl !== '') $b[] = "VI  - $vl";
+
+    $is = $f['IS'][0] ?? '';
+    if ($is !== '') $b[] = "IP  - $is";
+
+    $sp = $f['SP'][0] ?? '';
+    $ep = $f['EP'][0] ?? '';
+    if ($sp !== '') $b[] = "PG  - " . ($ep !== '' ? "$sp-$ep" : $sp);
+
+    $sn = $f['SN'][0] ?? '';
+    if ($sn !== '') $b[] = "SN  - $sn";
+
+    foreach ($f['KW'] ?? [] as $kw) $b[] = "MH  - $kw";
+
+    if ($rec['raw_doi'] !== '') $b[] = "AID - {$rec['raw_doi']} [doi]";
+
+    $an = $f['AN'][0] ?? '';
+    if ($an !== '') $b[] = "PMID- $an";
+
+    $b[] = "SO  - {$rec['source_file']}";
+
+    return implode("\n", $b);
+}
+
+function write_ris(array $recs, $fh): void {
+    $sep = '';
+    foreach ($recs as $rec) {
+        fwrite($fh, $sep . to_ris($rec));
+        $sep = "\n\n";
+    }
+    fwrite($fh, "\n");
+}
+
+// DOMDocument holds the whole tree in memory, so large result sets are
+// serialised in chunks by recs_to_xml() and the chunks spliced together. Each
+// <reference> is formatted the same whatever its siblings are, so the file is
+// byte-identical to serialising every record at once.
+function write_xml(array $recs, $fh, int $chunk = 500): void {
+    if (!$recs) { fwrite($fh, recs_to_xml([])); return; }
+    $head = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<references>\n";
+    $tail = "</references>\n";
+    fwrite($fh, $head);
+    foreach (array_chunk($recs, $chunk) as $part) {
+        $xml = recs_to_xml($part);
+        if (!str_starts_with($xml, $head) || !str_ends_with($xml, $tail)) {
+            throw new RuntimeException('Unexpected XML serialisation.');
+        }
+        fwrite($fh, substr($xml, strlen($head), -strlen($tail)));
+    }
+    fwrite($fh, $tail);
 }
 
 function recs_to_xml(array $recs): string {
@@ -964,19 +1046,28 @@ function recs_to_xml(array $recs): string {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * @param array $uploaded_files  [['name'=>string, 'content'=>string], ...]
- *                               ordered by user upload order = tie-break priority
- * @return array  file_stats[], n_* counts, cross[], ris/csv/medline/xml output strings,
+ * @param array  $uploaded_files  [['name'=>string, 'path'=>string], ...]
+ *                                ordered by user upload order = tie-break priority
+ * @param string $out_dir         existing directory; the six record outputs
+ *                                (RIS, CSV, MEDLINE, XML, exclusions, collisions)
+ *                                are written into it
+ * @return array  file_stats[], n_* counts, cross[],
  *                simple and complex PRISMA flowchart HTML strings
  */
-function run_deduplication(array $uploaded_files): array {
+function run_deduplication(array $uploaded_files, string $out_dir): array {
+    $open = function (string $name) use ($out_dir) {
+        $fh = fopen("$out_dir/$name", 'wb');
+        if ($fh === false) throw new RuntimeException('Could not write the results.');
+        return $fh;
+    };
+
     // ── Step 1: Load, parse, and compute norm_title ──────────────────────────
     $all_records   = [];
     $file_priority = []; // source_file basename → int (lower = higher priority)
     $file_stats    = [];
 
     foreach ($uploaded_files as $idx => $file) {
-        [$recs, $fmt, $warning] = load_content($file['content'], $file['name']);
+        [$recs, $fmt, $warning] = load_file($file['path'], $file['name']);
         $file_priority[$file['name']] = $idx;
 
         // Add raw_title and norm_title to each record
@@ -1120,12 +1211,16 @@ function run_deduplication(array $uploaded_files): array {
         return $a - $b;
     });
 
-    // ── Step 7a: Build output record array and generate all formats ───────────
-    $recs_out      = array_map(fn($i) => $all_records[$i], $kept_uids);
-    $ris_output    = implode("\n\n", array_map('to_ris', $recs_out)) . "\n";
-    $dedup_csv     = recs_to_dedup_csv($recs_out);
-    $dedup_medline = recs_to_medline_txt($recs_out);
-    $dedup_xml     = recs_to_xml($recs_out);
+    // ── Step 7a: Build output record array and write all formats ──────────────
+    $recs_out = array_map(fn($i) => $all_records[$i], $kept_uids);
+    foreach (['deduplicated.ris' => 'write_ris',
+              'deduplicated.csv' => 'write_dedup_csv',
+              'deduplicated.txt' => 'write_medline_txt',
+              'deduplicated.xml' => 'write_xml'] as $name => $writer) {
+        $fh = $open($name);
+        $writer($recs_out, $fh);
+        fclose($fh);
+    }
 
     // ── Step 7b: Generate excluded-duplicates CSV ─────────────────────────────
     $csv_cols = ['excluded_uid','excluded_source_file','excluded_source_format',
@@ -1134,15 +1229,13 @@ function run_deduplication(array $uploaded_files): array {
                  'kept_uid','kept_source_file','kept_source_format',
                  'kept_raw_doi','kept_norm_doi','kept_norm_title',
                  'kept_has_abstract','kept_title'];
-    $fh = fopen('php://temp', 'r+');
+    $fh = $open('excluded_duplicates.csv');
     fputcsv($fh, $csv_cols);
     foreach ($excluded_rows as $row) {
         $out = [];
         foreach ($csv_cols as $col) $out[] = (string)($row[$col] ?? '');
         fputcsv($fh, $out);
     }
-    rewind($fh);
-    $csv_output = stream_get_contents($fh);
     fclose($fh);
 
     // ── Step 7c: Generate DOI-collisions CSV ─────────────────────────────────
@@ -1164,15 +1257,13 @@ function run_deduplication(array $uploaded_files): array {
     }
     $col_cols = ['norm_doi','norm_title','raw_title','source_file','source_format',
                  'n_titles_this_doi','in_deduplicated_output'];
-    $fh2 = fopen('php://temp', 'r+');
+    $fh2 = $open('doi_collisions.csv');
     fputcsv($fh2, $col_cols);
     foreach ($collision_rows as $row) {
         $out = [];
         foreach ($col_cols as $col) $out[] = (string)($row[$col] ?? '');
         fputcsv($fh2, $out);
     }
-    rewind($fh2);
-    $collisions_csv = stream_get_contents($fh2);
     fclose($fh2);
 
     // ── Step 7d: Generate flowchart HTML ──────────────────────────────────────
@@ -1207,12 +1298,6 @@ function run_deduplication(array $uploaded_files): array {
         'n_excluded'          => $n_excluded,
         'n_kept'              => count($kept_uids),
         'cross'               => $cross,
-        'ris_output'          => $ris_output,
-        'dedup_csv'           => $dedup_csv,
-        'dedup_medline'       => $dedup_medline,
-        'dedup_xml'           => $dedup_xml,
-        'csv_output'          => $csv_output,
-        'collisions_csv'      => $collisions_csv,
         'simple_flowchart'    => $simple_flowchart,
         'complex_flowchart'   => $complex_flowchart,
     ];
@@ -1252,14 +1337,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Upload error for \"" . htmlspecialchars($names[$i]) . "\" (code {$errs[$i]}).";
                 break;
             }
-            $content = file_get_contents($tmps[$i]);
-            if ($content === false) {
+            if (!is_readable($tmps[$i])) {
                 $error = "Could not read \"" . htmlspecialchars($names[$i]) . "\".";
                 break;
             }
-            $uploaded[] = ['name' => $names[$i], 'content' => $content];
-            dbg(sprintf('read file %d/%d %s (%.2f MB)', $i + 1, $n,
-                        $names[$i], strlen($content) / 1048576));
+            // Parsed straight from PHP's upload temp file, never read whole.
+            $uploaded[] = ['name' => $names[$i], 'path' => $tmps[$i]];
+            dbg(sprintf('received file %d/%d %s (%.2f MB)', $i + 1, $n,
+                        $names[$i], filesize($tmps[$i]) / 1048576));
         }
     }
 
@@ -1267,19 +1352,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (count($uploaded) === 0) {
             $error = 'Please select at least one file.';
         } else {
+            $tok = bin2hex(random_bytes(16));
+            $dir = results_dir($tok);
             try {
+                sweep_results();
+                if (!@mkdir($dir, 0700)) throw new RuntimeException('Could not store the results.');
                 dbg('starting deduplication of ' . count($uploaded) . ' file(s)');
-                $results = run_deduplication($uploaded);
+                $results = run_deduplication($uploaded, $dir);
                 dbg(sprintf('deduplication done: %d in, %d kept, %d removed',
                     $results['n_total'], $results['n_kept'], $results['n_excluded']));
-                $tok = bin2hex(random_bytes(16));
+                // The previous run of this session is only replaced once this one
+                // has succeeded, so a failed run leaves the earlier results in place.
+                if (!empty($_SESSION['dedup_token'])) {
+                    remove_results_dir(results_dir($_SESSION['dedup_token']));
+                }
+                // Sessions created by earlier releases still carry the outputs themselves.
+                unset($_SESSION['dedup_ris'], $_SESSION['dedup_dedupcsv'],
+                      $_SESSION['dedup_medline'], $_SESSION['dedup_xml'],
+                      $_SESSION['dedup_csv'], $_SESSION['dedup_collisions']);
                 $_SESSION['dedup_token']     = $tok;
-                $_SESSION['dedup_ris']       = $results['ris_output'];
-                $_SESSION['dedup_dedupcsv']  = $results['dedup_csv'];
-                $_SESSION['dedup_medline']   = $results['dedup_medline'];
-                $_SESSION['dedup_xml']       = $results['dedup_xml'];
-                $_SESSION['dedup_csv']       = $results['csv_output'];
-                $_SESSION['dedup_collisions'] = $results['collisions_csv'];
                 if ($results['simple_flowchart'] !== '') {
                     $_SESSION['dedup_flowchart'] = $results['simple_flowchart'];
                 } else {
@@ -1291,13 +1382,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     unset($_SESSION['dedup_flowchart_complex']);
                 }
                 $results['tok'] = $tok;
-                dbg(sprintf('session payload written: %.2f MB',
-                    (strlen($results['ris_output']) + strlen($results['dedup_csv'])
-                     + strlen($results['dedup_medline']) + strlen($results['dedup_xml'])
-                     + strlen($results['csv_output']) + strlen($results['collisions_csv'])
-                     + strlen($results['simple_flowchart'])
-                     + strlen($results['complex_flowchart'])) / 1048576));
+                dbg(sprintf('results written: %.2f MB on disk, session %.2f MB',
+                    array_sum(array_map('filesize', glob("$dir/*") ?: [])) / 1048576,
+                    strlen(serialize($_SESSION)) / 1048576));
             } catch (Throwable $e) {
+                remove_results_dir($dir);
                 dbg('EXCEPTION ' . get_class($e) . ': ' . $e->getMessage()
                     . ' @ ' . $e->getFile() . ':' . $e->getLine());
                 $error = 'Processing error: ' . htmlspecialchars($e->getMessage());

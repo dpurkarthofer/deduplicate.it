@@ -15,6 +15,39 @@ Two version numbers appear in the source and should not be confused:
 
 ---
 
+## [Unreleased]
+
+The web edition handles much larger searches. A 40 MB export of about 12,000 records, which
+previously failed, now runs within the 256 MB memory limit, and roughly 60 MB of exports
+fit in one run.
+
+No change to deduplication behaviour or to the algorithm generation (still v6). Run against
+the same inputs, the web edition produces results pages and downloads byte-for-byte
+identical to 1.2.0 in every output format. The command-line edition is unchanged.
+
+### Fixed
+
+- **Large uploads ran out of memory.** Each upload was read whole and split into lines at
+  once, which alone needed several times the file's size. The line-based formats (RIS,
+  MEDLINE, Web of Science) are now parsed straight from the upload as they are read. BibTeX
+  and CSV/TSV are still read whole.
+- **Results were kept in the PHP session.** All six record outputs were built in memory and
+  stored in the session, so a large search produced a session of about 100 MB. Every later
+  request, including each download, had to load it before the page could respond, and on
+  a host with a lower default memory limit the download itself failed. Outputs are now
+  written to files, record by record, and the session keeps only the download token and the
+  two PRISMA flowcharts.
+
+### Changed
+
+- **Result files are kept for one hour.** They are written to a per-run folder in PHP's
+  temporary directory, removed when the same browser session runs again, and removed by
+  the next run once they are an hour old. A download after that shows a message asking
+  for a new run instead of the page. Sessions created by earlier releases drop their
+  stored outputs on their next run.
+
+---
+
 ## [1.2.0] — 2026-09-23
 
 Archived on Zenodo (doi:10.5281/zenodo.22918233).
