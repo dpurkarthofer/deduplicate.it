@@ -190,9 +190,86 @@ function remove_results_dir(string $dir): void {
 
 function sweep_results(): void {
     $cutoff = time() - RESULT_TTL;
-    foreach (glob(rtrim(sys_get_temp_dir(), '/') . '/ddi-results-*', GLOB_ONLYDIR) ?: [] as $dir) {
+    $tmp    = rtrim(sys_get_temp_dir(), '/');
+    foreach (glob($tmp . '/ddi-results-*', GLOB_ONLYDIR) ?: [] as $dir) {
         if (@filemtime($dir) < $cutoff) remove_results_dir($dir);
     }
+    // Unpacked uploads are deleted after each run; these are left only by a run
+    // that died part-way.
+    foreach (glob($tmp . '/ddi-up-*') ?: [] as $f) {
+        if (@filemtime($f) < $cutoff) @unlink($f);
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPRESSED UPLOADS
+// The host drops any request body above roughly 25 MB before PHP sees it, so
+// the browser never gets an answer. Where it can, the upload page therefore
+// gzip-compresses each file before sending it (exports shrink three- to
+// four-fold) and marks the request with gz=1. Each file is unpacked here into a
+// temporary file, and everything after that is unchanged.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Largest request body the host accepts, measured on deduplicate.it: 24 MB
+// arrived, 30 MB was dropped. The upload page checks against it before
+// sending. 0 turns the check off, e.g. on a server without such a limit.
+const UPLOAD_LIMIT_BYTES = 24 * 1048576;
+
+// Largest total input one run can process within memory_limit = 256M. Peak
+// memory is about four times the input; 60 MB of exports peaked at 238 MB.
+// Also caps what a compressed upload may unpack to.
+const MAX_INPUT_BYTES = 60 * 1048576;
+
+function gzip_supported(): bool {
+    return function_exists('inflate_init');
+}
+
+// Unpacks a gzip upload into a new temporary file and returns its path. Stops
+// once more than $budget bytes have come out, so a small upload cannot unpack
+// to something that fills the disk.
+function gunzip_upload(string $src, int $budget): string {
+    $in = fopen($src, 'rb');
+    if ($in === false) throw new RuntimeException('Could not read the uploaded file.');
+    $dst = tempnam(sys_get_temp_dir(), 'ddi-up-');
+    $out = $dst === false ? false : fopen($dst, 'wb');
+    if ($out === false) {
+        fclose($in);
+        throw new RuntimeException('Could not unpack the uploaded file.');
+    }
+    $ok = false;
+    try {
+        $ctx = inflate_init(ZLIB_ENCODING_GZIP);
+        $n   = 0;
+        while (!feof($in)) {
+            $chunk = fread($in, 8192);
+            if ($chunk === false) throw new RuntimeException('Could not read the uploaded file.');
+            $data = @inflate_add($ctx, $chunk);
+            if ($data === false) throw new RuntimeException('The compressed upload is damaged. Please try again.');
+            $n += strlen($data);
+            if ($n > $budget) throw new LengthException('too large');
+            fwrite($out, $data);
+        }
+        if (inflate_get_status($ctx) !== ZLIB_STREAM_END) {
+            throw new RuntimeException('The compressed upload is incomplete. Please try again.');
+        }
+        $ok = true;
+    } finally {
+        fclose($in);
+        fclose($out);
+        if (!$ok) @unlink($dst);
+    }
+    return $dst;
+}
+
+// $bytes is null when a compressed upload was stopped part-way and the full
+// size is unknown.
+function too_large_message(?int $bytes): string {
+    $size = $bytes === null ? sprintf('more than %d', MAX_INPUT_BYTES / 1048576)
+                            : sprintf('%.0f', $bytes / 1048576);
+    return "Together these files are $size MB. One run on this server handles up to "
+         . (MAX_INPUT_BYTES / 1048576) . ' MB of exports. For larger searches, use the '
+         . 'command-line edition, which has no size limit.';
 }
 
 
@@ -1348,6 +1425,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Unpack compressed uploads, then check the total before any parsing: a run
+    // above MAX_INPUT_BYTES would exhaust memory_limit and die without a page.
+    $unpacked = [];
+    if (!$error && $uploaded) {
+        $gz    = ($_POST['gz'] ?? '') === '1';
+        $total = 0;
+        try {
+            if ($gz && !gzip_supported()) {
+                throw new RuntimeException('This server cannot unpack compressed uploads.');
+            }
+            for ($i = 0, $n = count($uploaded); $i < $n; $i++) {
+                if ($gz) {
+                    $packed = filesize($uploaded[$i]['path']);
+                    $uploaded[$i]['path'] = $unpacked[] =
+                        gunzip_upload($uploaded[$i]['path'], MAX_INPUT_BYTES - $total);
+                    dbg(sprintf('unpacked file %d/%d: %.2f MB -> %.2f MB', $i + 1, $n,
+                        $packed / 1048576, filesize($uploaded[$i]['path']) / 1048576));
+                }
+                $total += filesize($uploaded[$i]['path']);
+            }
+            if ($total > MAX_INPUT_BYTES) $error = too_large_message($total);
+        } catch (LengthException $e) {
+            $error = too_large_message(null);
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
+
     if (!$error) {
         if (count($uploaded) === 0) {
             $error = 'Please select at least one file.';
@@ -1393,6 +1498,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+    foreach ($unpacked as $p) @unlink($p);
 }
 dbg('processing complete, rendering page'
     . ($error !== null ? ' (with error: ' . $error . ')' : ''));
@@ -1721,7 +1827,9 @@ a{color:#5b8de0}
 <div class="card" style="padding-top:1.1rem;padding-bottom:1.1rem">
   <h2 style="margin-bottom:.4rem">Upload files to remove duplicates</h2>
 
-  <form method="post" enctype="multipart/form-data" id="frm">
+  <div class="err" id="upload-err" hidden></div>
+  <form method="post" enctype="multipart/form-data" id="frm"
+        data-gz="<?= gzip_supported() ? '1' : '0' ?>" data-limit="<?= UPLOAD_LIMIT_BYTES ?>">
     <div class="drop" id="drop">
       <input type="file" name="files[]" id="fi" multiple
              accept=".txt,.ris,.nbib,.ciw,.bib,.csv,.tsv,.enw">
@@ -1855,9 +1963,84 @@ drp.addEventListener('drop', ev => {
   }
 });
 
-frm.addEventListener('submit', () => {
+// The host drops request bodies above roughly 25 MB without an answer, which
+// left the page showing "Processing" until the browser gave up. Where the
+// browser supports it, each file is gzip-compressed before upload (exports
+// shrink three- to four-fold) and unpacked on the server, so the results are
+// unchanged. Otherwise the form is posted as before. Either way, an upload the
+// host would drop is stopped here with a message instead.
+const LIMIT = Number(frm.dataset.limit) || 0;
+const CAN_GZ = frm.dataset.gz === '1' && 'CompressionStream' in window && 'fetch' in window;
+const mb = n => (n / 1048576).toFixed(0) + ' MB';
+
+function uploadError(msg) {
+  const box = document.getElementById('upload-err');
+  box.textContent = '\u26a0 ' + msg;
+  box.hidden = false;
+  spn.style.display = 'none';
+  frm.style.display = '';
+}
+
+function tooLargeMessage(bytes, compressed) {
+  return 'Together these files are ' + mb(bytes) + (compressed ? ' even after compression' : '')
+       + ', and this server accepts uploads of up to ' + mb(LIMIT) + '. '
+       + (compressed ? '' : 'A current version of Chrome, Firefox, Safari or Edge compresses '
+          + 'uploads to about a third of their size. ')
+       + 'For larger searches, use the command-line edition, which has no size limit.';
+}
+
+async function gzip(file) {
+  const stream = file.stream().pipeThrough(new CompressionStream('gzip'));
+  return new Response(stream).blob();
+}
+
+frm.addEventListener('submit', async ev => {
+  const files = Array.from(fi.files);
+  const raw   = files.reduce((s, f) => s + f.size, 0);
+  document.getElementById('upload-err').hidden = true;
+
+  if (!CAN_GZ) {
+    if (LIMIT && raw > LIMIT) { ev.preventDefault(); uploadError(tooLargeMessage(raw, false)); return; }
+    frm.style.display = 'none';
+    spn.style.display = 'block';
+    return;                                   // plain form post, as before
+  }
+
+  ev.preventDefault();
   frm.style.display = 'none';
   spn.style.display = 'block';
+
+  let body;
+  try {
+    body = new FormData();
+    let packed = 0;
+    for (const f of files) {
+      const blob = await gzip(f);
+      packed += blob.size;
+      body.append('files[]', blob, f.name);
+    }
+    body.append('gz', '1');
+    if (LIMIT && packed > LIMIT) { uploadError(tooLargeMessage(packed, true)); return; }
+  } catch (_) {
+    // Compression failed: send the files as they are, if the host will take them.
+    if (LIMIT && raw > LIMIT) { uploadError(tooLargeMessage(raw, false)); return; }
+    frm.submit();
+    return;
+  }
+
+  let html;
+  try {
+    const res = await fetch(location.href, { method: 'POST', body, credentials: 'same-origin' });
+    html = await res.text();
+  } catch (_) {
+    uploadError('No answer came back from the server: the connection was interrupted. '
+      + 'Please try again. For very large searches, use the command-line edition, which has '
+      + 'no size limit.');
+    return;
+  }
+  document.open();
+  document.write(html);
+  document.close();
 });
 
 function toggleFmt() {

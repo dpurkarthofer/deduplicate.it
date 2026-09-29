@@ -26,6 +26,12 @@ Deploy to any PHP 8.x server. Place `index.php`, `legal.php`, and both `.drawio.
 running PHP-FPM, keep it beside `index.php`; on other setups apply the equivalent
 directives in `php.ini`. With `memory_limit = 256M`, one run takes roughly 60 MB of exports.
 
+Two constants in the "Compressed uploads" section of `index.php` describe the server.
+`UPLOAD_LIMIT_BYTES` is the largest request the host accepts (24 MB on deduplicate.it); set
+it to your host's limit, or to 0 if there is none. `MAX_INPUT_BYTES` is the most one run can
+process within `memory_limit` (60 MB at 256M). Current browsers gzip-compress uploads before
+sending them, which needs PHP's zlib extension; without it, files are uploaded uncompressed.
+
 Results are written to PHP's temporary directory (`sys_get_temp_dir()`), which must be
 writable. Each run gets its own folder, removed when the same browser session runs again
 or once it is an hour old.

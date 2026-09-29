@@ -18,8 +18,10 @@ Two version numbers appear in the source and should not be confused:
 ## [Unreleased]
 
 The web edition handles much larger searches. A 40 MB export of about 12,000 records, which
-previously failed, now runs within the 256 MB memory limit, and roughly 60 MB of exports
-fit in one run.
+previously never produced a result, now completes: current browsers compress the upload
+before sending it, and the server processes it within the 256 MB memory limit. Roughly
+60 MB of exports fit in one run, and a larger upload now gets a message instead of an
+endless "Processing".
 
 No change to deduplication behaviour or to the algorithm generation (still v6). Run against
 the same inputs, the web edition produces results pages and downloads byte-for-byte
@@ -27,6 +29,12 @@ identical to 1.2.0 in every output format. The command-line edition is unchanged
 
 ### Fixed
 
+- **Large uploads never reached the server.** The host drops any request above roughly
+  25 MB without an answer, so the page showed "Processing, please wait" until the browser
+  reported the site unreachable. Where the browser supports it (current Chrome, Firefox,
+  Safari and Edge), each file is now gzip-compressed before upload, which shrinks exports
+  three- to four-fold, and unpacked on the server before processing. Other browsers post
+  the form as before.
 - **Large uploads ran out of memory.** Each upload was read whole and split into lines at
   once, which alone needed several times the file's size. The line-based formats (RIS,
   MEDLINE, Web of Science) are now parsed straight from the upload as they are read. BibTeX
@@ -37,6 +45,14 @@ identical to 1.2.0 in every output format. The command-line edition is unchanged
   a host with a lower default memory limit the download itself failed. Outputs are now
   written to files, record by record, and the session keeps only the download token and the
   two PRISMA flowcharts.
+
+### Added
+
+- **Size checks with a clear message.** Before sending, the page checks the upload against
+  the host's limit. The server checks the total against what one run can process (60 MB of
+  exports) before parsing anything. Both point to the command-line edition, which has no
+  size limit. A connection that drops during upload now shows a message instead of an
+  endless spinner.
 
 ### Changed
 
