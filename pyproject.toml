@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deduplicate-it"
-version = "1.2.0"
+version = "1.2.1"
 description = "Free, auditable removal of duplicate records from literature search exports for systematic reviews, scoping reviews and meta-analyses."
 readme = "README.md"
 requires-python = ">=3.11"

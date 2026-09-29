@@ -99,10 +99,10 @@ See the accompanying manuscript and Supplement A for a full step-by-step technic
 
 ## Version history
 
-See [CHANGELOG.md](CHANGELOG.md). The **release version** (currently 1.2.0) and the
+See [CHANGELOG.md](CHANGELOG.md). The **release version** (currently 1.2.1) and the
 **algorithm generation** (`v6`) are tracked separately: the algorithm generation changes
 only when deduplication decisions change. The web application and the Python package share
-the release version, so 1.2.0 means the same algorithm in both.
+the release version, so 1.2.1 means the same algorithm in both.
 
 ## License
 

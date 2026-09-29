@@ -7,7 +7,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Two version numbers appear in the source and should not be confused:
 
-- the **release version** (`1.2.0`), which this file tracks;
+- the **release version** (`1.2.1`), which this file tracks;
 - the **algorithm generation** (`v6`), which names the deduplication logic — the compound
   key of (normalised DOI, normalised title) and the title-normalisation pipeline. The
   algorithm generation changes only when deduplication decisions change, and it has not

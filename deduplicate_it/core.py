@@ -2,7 +2,7 @@
 """
 deduplicate.it — Literature Search Deduplication (command-line edition)
 -----------------------------------------------------------------------
-Release 1.2.0  ·  algorithm generation v6
+Release 1.2.1  ·  algorithm generation v6
 See CHANGELOG.md for the release history.
 
 Citation
@@ -58,7 +58,7 @@ from collections import defaultdict, Counter
 # All supported formats (.ris, .txt, .nbib, .bib, .csv, .tsv, .ciw, .enw)
 # are auto-detected. Files are processed in alphabetical order.
 
-__version__ = '1.2.0'
+__version__ = '1.2.1'
 
 SOURCE_DIR = Path('source')        # relative to the current working directory
 
