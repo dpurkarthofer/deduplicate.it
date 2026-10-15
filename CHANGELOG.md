@@ -15,7 +15,9 @@ Two version numbers appear in the source and should not be confused:
 
 ---
 
-## [Unreleased]
+## [1.2.1] — 2026-10-15
+
+Archived on Zenodo (doi:10.5281/zenodo.23398641).
 
 The web edition handles much larger searches. A 40 MB export of about 12,000 records, which
 previously never produced a result, now completes: current browsers compress the upload
